@@ -145,7 +145,7 @@ static inline bool calldata_bool(const calldata_t *data, const char *name)
 
 static inline void *calldata_ptr(const calldata_t *data, const char *name)
 {
-	void *val;
+	void *val = NULL;
 	calldata_get_ptr(data, name, &val);
 	return val;
 }
@@ -153,7 +153,7 @@ static inline void *calldata_ptr(const calldata_t *data, const char *name)
 static inline const char *calldata_string(const calldata_t *data,
 		const char *name)
 {
-	const char *val;
+	const char *val = NULL;
 	calldata_get_string(data, name, &val);
 	return val;
 }
