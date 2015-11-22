@@ -889,6 +889,11 @@ int obs_reset_video(struct obs_video_info *ovi)
 		}
 	}
 
+	if (!ovi->fps_den) {
+		blog(LOG_INFO, "Disabling audio/video output");
+		return OBS_VIDEO_SUCCESS;
+	}
+
 	blog(LOG_INFO, "---------------------------------");
 	blog(LOG_INFO, "video settings reset:\n"
 	               "\tbase resolution:   %dx%d\n"
