@@ -31,6 +31,7 @@
 #define SETTING_LIMIT_FRAMERATE  "limit_framerate"
 #define SETTING_CAPTURE_OVERLAYS "capture_overlays"
 #define SETTING_ANTI_CHEAT_HOOK  "anti_cheat_hook"
+#define SETTING_OVERLAY_DLL      "overlay_dll"
 
 #define TEXT_GAME_CAPTURE        obs_module_text("GameCapture")
 #define TEXT_ANY_FULLSCREEN      obs_module_text("GameCapture.AnyFullscreen")
@@ -66,6 +67,7 @@ struct game_capture_config {
 	bool                          limit_framerate : 1;
 	bool                          capture_overlays : 1;
 	bool                          anticheat_hook : 1;
+	char                          *overlay_dll;
 };
 
 struct game_capture {
@@ -213,6 +215,7 @@ static inline void free_config(struct game_capture_config *config)
 	bfree(config->title);
 	bfree(config->class);
 	bfree(config->executable);
+	bfree(config->overlay_dll);
 	memset(config, 0, sizeof(*config));
 }
 
@@ -269,6 +272,9 @@ static inline void get_config(struct game_capture_config *cfg,
 			cfg->scale_cy = 0;
 		}
 	}
+
+	cfg->overlay_dll = bstrdup(
+			obs_data_get_string(settings, SETTING_OVERLAY_DLL));
 }
 
 static inline int s_cmp(const char *str1, const char *str2)
@@ -307,6 +313,10 @@ static inline bool capture_needs_reset(struct game_capture_config *cfg1,
 		return true;
 
 	} else if (cfg1->capture_overlays != cfg2->capture_overlays) {
+		return true;
+
+	} else if (cfg1->overlay_dll != cfg2->overlay_dll ||
+			strcmp(cfg1->overlay_dll, cfg2->overlay_dll)) {
 		return true;
 	}
 
@@ -534,6 +544,10 @@ static inline bool init_hook_info(struct game_capture *gc)
 	gc->global_hook_info->cx = gc->config.scale_cx;
 	gc->global_hook_info->cy = gc->config.scale_cy;
 	reset_frame_interval(gc);
+
+	strncpy(gc->global_hook_info->overlay_dll_path,
+			gc->config.overlay_dll ? gc->config.overlay_dll : "",
+			MAX_PATH);
 
 	obs_enter_graphics();
 	if (!gs_shared_texture_available())
@@ -1401,6 +1415,8 @@ static void game_capture_defaults(obs_data_t *settings)
 	obs_data_set_default_bool(settings, SETTING_LIMIT_FRAMERATE, false);
 	obs_data_set_default_bool(settings, SETTING_CAPTURE_OVERLAYS, false);
 	obs_data_set_default_bool(settings, SETTING_ANTI_CHEAT_HOOK, false);
+
+	obs_data_set_default_string(settings, SETTING_OVERLAY_DLL, NULL);
 }
 
 static bool any_fullscreen_callback(obs_properties_t *ppts,
@@ -1580,6 +1596,11 @@ static obs_properties_t *game_capture_properties(void *data)
 
 	obs_properties_add_bool(ppts, SETTING_CAPTURE_OVERLAYS,
 			TEXT_CAPTURE_OVERLAYS);
+
+	obs_property_t *o_dll = obs_properties_add_text(ppts,
+			SETTING_OVERLAY_DLL, "overlay_dll (invisible)",
+			OBS_TEXT_DEFAULT);
+	obs_property_set_visible(o_dll, false);
 
 	UNUSED_PARAMETER(data);
 	return ppts;

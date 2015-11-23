@@ -61,6 +61,30 @@ extern void capture_free(void);
 
 extern struct hook_info *global_hook_info;
 
+
+typedef bool (*overlay_init)(void);
+typedef void (*overlay_free)(void);
+typedef void (*overlay_compile_dxgi_shaders)(/*pD3DCompile*/void(*)(void));
+//typedef void (*overlay_draw_ddraw)(void);
+typedef void (*overlay_draw_d3d8)(void /*IDirect3DDevice8*/ *);
+typedef void (*overlay_draw_d3d9)(void /*IDirect3DDevice9*/ *);
+typedef void (*overlay_draw_d3d10)(void /*IDXGISwapChain*/ *);
+typedef void (*overlay_draw_d3d11)(void /*IDXGISwapChain*/ *);
+typedef void (*overlay_draw_gl)(HDC);
+struct overlay_info {
+	overlay_init init;
+	overlay_free free;
+	overlay_compile_dxgi_shaders compile_dxgi_shaders;
+	//overlay_draw_ddraw draw_ddraw;
+	overlay_draw_d3d8 draw_d3d8;
+	overlay_draw_d3d9 draw_d3d9;
+	overlay_draw_d3d10 draw_d3d10;
+	overlay_draw_d3d11 draw_d3d11;
+	overlay_draw_gl draw_gl;
+};
+extern struct overlay_info overlay_info;
+
+
 struct vertex {
 	struct {
 		float x, y, z, w;

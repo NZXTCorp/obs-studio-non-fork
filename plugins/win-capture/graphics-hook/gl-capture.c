@@ -764,6 +764,10 @@ static BOOL WINAPI hook_swap_buffers(HDC hdc)
 		gl_capture(hdc);
 
 	unhook(&swap_buffers);
+
+	if (overlay_info.draw_gl)
+		overlay_info.draw_gl(hdc);
+
 	BOOL (WINAPI *call)(HDC) = swap_buffers.call_addr;
 	ret = call(hdc);
 	rehook(&swap_buffers);
@@ -782,6 +786,10 @@ static BOOL WINAPI hook_wgl_swap_buffers(HDC hdc)
 		gl_capture(hdc);
 
 	unhook(&wgl_swap_buffers);
+
+	if (overlay_info.draw_gl)
+		overlay_info.draw_gl(hdc);
+
 	BOOL (WINAPI *call)(HDC) = wgl_swap_buffers.call_addr;
 	ret = call(hdc);
 	rehook(&wgl_swap_buffers);
@@ -800,6 +808,10 @@ static BOOL WINAPI hook_wgl_swap_layer_buffers(HDC hdc, UINT planes)
 		gl_capture(hdc);
 
 	unhook(&wgl_swap_layer_buffers);
+
+	if (overlay_info.draw_gl)
+		overlay_info.draw_gl(hdc);
+
 	BOOL (WINAPI *call)(HDC, UINT) = wgl_swap_layer_buffers.call_addr;
 	ret = call(hdc, planes);
 	rehook(&wgl_swap_layer_buffers);

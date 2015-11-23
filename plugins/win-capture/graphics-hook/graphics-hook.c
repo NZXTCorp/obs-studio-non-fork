@@ -52,6 +52,9 @@ static struct thread_data      thread_data                     = {0};
 volatile bool                  active                          = false;
 struct hook_info               *global_hook_info               = NULL;
 
+static HMODULE                 overlay_dll                     = NULL;
+struct overlay_info            overlay_info                    = {0};
+
 
 static inline void wait_for_dll_main_finish(HANDLE thread_handle)
 {
@@ -182,6 +185,41 @@ static inline bool init_hook_info(void)
 	return true;
 }
 
+static void free_overlay(void);
+static void init_overlay_info(void)
+{
+	if (!global_hook_info->overlay_dll_path[0])
+		return;
+
+	overlay_dll = LoadLibraryA(global_hook_info->overlay_dll_path);
+	if (!overlay_dll) {
+		hlog("Failed to load overlay library '%s' (0x%x)",
+				global_hook_info->overlay_dll_path,
+				GetLastError());
+		return;
+	}
+
+#define LOAD_SYM(x) \
+	overlay_info.x = (overlay_ ## x) GetProcAddress(overlay_dll, #x)
+	LOAD_SYM(init);
+	LOAD_SYM(free);
+
+	if (overlay_info.init && !overlay_info.init()) {
+		hlog("Overlay init returned false");
+		free_overlay();
+		return;
+	}
+
+	LOAD_SYM(compile_dxgi_shaders);
+	//LOAD_SYM(draw_ddraw);
+	LOAD_SYM(draw_d3d8);
+	LOAD_SYM(draw_d3d9);
+	LOAD_SYM(draw_d3d10);
+	LOAD_SYM(draw_d3d11);
+	LOAD_SYM(draw_gl);
+#undef LOAD_SYM
+}
+
 #define DEF_FLAGS (WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS)
 
 static DWORD WINAPI dummy_window_thread(LPVOID *unused)
@@ -254,6 +292,8 @@ static inline bool init_hook(HANDLE thread_handle)
 		return false;
 	}
 
+	init_overlay_info();
+
 	init_dummy_window_thread();
 	log_current_process();
 
@@ -269,12 +309,28 @@ static inline void close_handle(HANDLE *handle)
 	}
 }
 
+static void free_overlay(void)
+{
+	if (!overlay_dll)
+		return;
+
+	if (overlay_info.free)
+		overlay_info.free();
+
+	memset(&overlay_info, 0, sizeof(overlay_info));
+	FreeLibrary(overlay_dll);
+	overlay_dll = NULL;
+}
+
 static void free_hook(void)
 {
 	if (filemap_hook_info) {
 		CloseHandle(filemap_hook_info);
 		filemap_hook_info = NULL;
 	}
+
+	free_overlay();
+
 	if (global_hook_info) {
 		UnmapViewOfFile(global_hook_info);
 		global_hook_info = NULL;

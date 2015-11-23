@@ -95,6 +95,9 @@ struct hook_info {
 
 	/* hook addresses */
 	struct graphics_offsets        offsets;
+
+	/* overlay handling */
+	char                           overlay_dll_path[MAX_PATH];
 };
 
 #pragma pack(pop)

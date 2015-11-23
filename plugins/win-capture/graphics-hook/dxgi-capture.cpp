@@ -19,6 +19,8 @@ struct dxgi_swap_data {
 	IDXGISwapChain *swap;
 	void (*capture)(void*, void*);
 	void (*free)(void);
+
+	void (*draw)(void*);
 };
 
 static struct dxgi_swap_data data = {};
@@ -44,6 +46,9 @@ static bool setup_dxgi(IDXGISwapChain *swap)
 			data.swap = swap;
 			data.capture = d3d10_capture;
 			data.free = d3d10_free;
+
+			data.draw = overlay_info.draw_d3d10;
+
 			device->Release();
 			return true;
 		}
@@ -54,6 +59,9 @@ static bool setup_dxgi(IDXGISwapChain *swap)
 		data.swap = swap;
 		data.capture = d3d11_capture;
 		data.free = d3d11_free;
+
+		data.draw = overlay_info.draw_d3d11;
+
 		device->Release();
 		return true;
 	}
@@ -75,6 +83,8 @@ static HRESULT STDMETHODCALLTYPE hook_resize_buffers(IDXGISwapChain *swap,
 	data.swap = nullptr;
 	data.free = nullptr;
 	data.capture = nullptr;
+
+	data.draw = nullptr;
 
 	unhook(&resize_buffers);
 	resize_buffers_t call = (resize_buffers_t)resize_buffers.call_addr;
@@ -122,6 +132,10 @@ static HRESULT STDMETHODCALLTYPE hook_present(IDXGISwapChain *swap,
 	}
 
 	unhook(&present);
+
+	if (data.draw && swap == data.swap)
+		data.draw(swap);
+
 	present_t call = (present_t)present.call_addr;
 	hr = call(swap, sync_interval, flags);
 	rehook(&present);
@@ -228,6 +242,12 @@ bool hook_dxgi(void)
 	memcpy(pixel_shader_data, blob->GetBufferPointer(),
 			blob->GetBufferSize());
 	blob->Release();
+
+	/* ---------------------- */
+
+	if (overlay_info.compile_dxgi_shaders)
+		overlay_info.compile_dxgi_shaders(
+				(void(*)())(compile));
 
 	/* ---------------------- */
 
