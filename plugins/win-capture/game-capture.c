@@ -32,6 +32,8 @@
 #define SETTING_CAPTURE_OVERLAYS "capture_overlays"
 #define SETTING_ANTI_CHEAT_HOOK  "anti_cheat_hook"
 #define SETTING_OVERLAY_DLL      "overlay_dll"
+#define SETTING_PROCESS_ID       "process_id"
+#define SETTING_THREAD_ID        "thread_id"
 
 #define TEXT_GAME_CAPTURE        obs_module_text("GameCapture")
 #define TEXT_ANY_FULLSCREEN      obs_module_text("GameCapture.AnyFullscreen")
@@ -68,6 +70,8 @@ struct game_capture_config {
 	bool                          capture_overlays : 1;
 	bool                          anticheat_hook : 1;
 	char                          *overlay_dll;
+	DWORD                         process_id;
+	DWORD                         thread_id;
 };
 
 struct game_capture {
@@ -275,6 +279,9 @@ static inline void get_config(struct game_capture_config *cfg,
 
 	cfg->overlay_dll = bstrdup(
 			obs_data_get_string(settings, SETTING_OVERLAY_DLL));
+
+	cfg->process_id = (DWORD)obs_data_get_int(settings, SETTING_PROCESS_ID);
+	cfg->thread_id = (DWORD)obs_data_get_int(settings, SETTING_THREAD_ID);
 }
 
 static inline int s_cmp(const char *str1, const char *str2)
@@ -332,7 +339,9 @@ static void game_capture_update(void *data, obs_data_t *settings)
 			SETTING_CAPTURE_WINDOW);
 
 	get_config(&cfg, settings, window);
-	reset_capture = capture_needs_reset(&cfg, &gc->config);
+	reset_capture = (cfg.thread_id && cfg.thread_id != gc->thread_id)
+		|| (cfg.process_id && cfg.process_id != gc->process_id)
+		|| capture_needs_reset(&cfg, &gc->config);
 
 	if (cfg.force_scaling && (cfg.scale_cx == 0 || cfg.scale_cy == 0)) {
 		gc->error_acquiring = true;
@@ -644,6 +653,12 @@ static inline bool create_inject_process(struct game_capture *gc,
 	STARTUPINFO si = {0};
 	bool success = false;
 
+	if (anti_cheat && !gc->thread_id) {
+		warn("Anti cheat was enabled with no thread id set, "
+				"trying without anti cheat");
+		anti_cheat = false;
+	}
+
 	os_utf8_to_wcs_ptr(inject_path, 0, &inject_path_w);
 	os_utf8_to_wcs_ptr(hook_dll, 0, &hook_dll_w);
 
@@ -725,6 +740,9 @@ static bool init_hook(struct game_capture *gc)
 					name.array);
 			dstr_free(&name);
 		}
+	} else if (gc->config.thread_id || gc->config.process_id) {
+		info("attempting to hook process id %lu (thread id %lu)",
+				gc->config.thread_id, gc->config.process_id);
 	} else {
 		info("attempting to hook process: %s", gc->config.executable);
 	}
@@ -827,6 +845,16 @@ static void get_selected_window(struct game_capture *gc)
 
 static void try_hook(struct game_capture *gc)
 {
+	if (gc->config.thread_id || gc->config.process_id) {
+		gc->thread_id = gc->config.thread_id;
+		gc->process_id = gc->config.process_id;
+
+		if (!init_hook(gc))
+			stop_capture(gc);
+
+		return;
+	}
+
 	if (gc->config.capture_any_fullscreen) {
 		get_fullscreen_window(gc);
 	} else {
@@ -1417,6 +1445,9 @@ static void game_capture_defaults(obs_data_t *settings)
 	obs_data_set_default_bool(settings, SETTING_ANTI_CHEAT_HOOK, false);
 
 	obs_data_set_default_string(settings, SETTING_OVERLAY_DLL, NULL);
+
+	obs_data_set_default_int(settings, SETTING_PROCESS_ID, 0);
+	obs_data_set_default_int(settings, SETTING_THREAD_ID, 0);
 }
 
 static bool any_fullscreen_callback(obs_properties_t *ppts,
@@ -1601,6 +1632,16 @@ static obs_properties_t *game_capture_properties(void *data)
 			SETTING_OVERLAY_DLL, "overlay_dll (invisible)",
 			OBS_TEXT_DEFAULT);
 	obs_property_set_visible(o_dll, false);
+
+	obs_property_t *pid = obs_properties_add_int(ppts,
+			SETTING_PROCESS_ID, "process_id (invisible)",
+			0, ULONG_MAX, 1);
+	obs_property_set_visible(pid, false);
+
+	obs_property_t *tid = obs_properties_add_int(ppts,
+			SETTING_THREAD_ID, "thread_id (invisible)",
+			0, ULONG_MAX, 1);
+	obs_property_set_visible(tid, false);
 
 	UNUSED_PARAMETER(data);
 	return ppts;
