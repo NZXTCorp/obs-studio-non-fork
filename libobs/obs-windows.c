@@ -55,6 +55,38 @@ void add_default_module_paths(void)
 		obs_add_module_path(module_bin[i], module_data[i]);
 }
 
+static bool find_data_file(const char *file, struct dstr *path)
+{
+	HMODULE module;
+	if (!GetModuleHandleEx(
+			GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+			GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+			(LPCTSTR)&find_data_file, &module))
+		return false;
+
+	char filename[MAX_PATH];
+	if (!GetModuleFileNameA(module, filename, MAX_PATH))
+		return false;
+
+	filename[MAX_PATH - 1] = 0;
+
+	char drive[_MAX_DRIVE] = "";
+	char dir[_MAX_DIR] = "";
+	if (_splitpath_s(filename, drive, _MAX_DRIVE, dir, _MAX_DIR,
+			NULL, 0, NULL, 0))
+		return false;
+
+	dstr_printf(path, "%s%sdata/libobs/%s", drive, dir, file);
+	if (os_file_exists(path->array))
+		return true;
+
+	dstr_printf(path, "%s%s../../data/libobs/%s", drive, dir, file);
+	if (os_file_exists(path->array))
+		return true;
+
+	return false;
+}
+
 /* on windows, points to [base directory]/data/libobs */
 char *find_libobs_data_file(const char *file)
 {
@@ -65,6 +97,9 @@ char *find_libobs_data_file(const char *file)
 		return path.array;
 
 	if (check_path(file, "../../data/libobs/", &path))
+		return path.array;
+
+	if (find_data_file(file, &path))
 		return path.array;
 
 	dstr_free(&path);
