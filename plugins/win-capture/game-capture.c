@@ -352,7 +352,8 @@ static void game_capture_update(void *data, obs_data_t *settings)
 
 	free_config(&gc->config);
 	gc->config = cfg;
-	gc->activate_hook = !!window && !!*window;
+	gc->activate_hook = cfg.process_id || cfg.thread_id ||
+		(!!window && !!*window);
 	gc->retry_interval = DEFAULT_RETRY_INTERVAL;
 
 	if (!gc->initial_config) {
@@ -742,7 +743,7 @@ static bool init_hook(struct game_capture *gc)
 		}
 	} else if (gc->config.thread_id || gc->config.process_id) {
 		info("attempting to hook process id %lu (thread id %lu)",
-				gc->config.thread_id, gc->config.process_id);
+				gc->config.process_id, gc->config.thread_id);
 	} else {
 		info("attempting to hook process: %s", gc->config.executable);
 	}
@@ -1274,7 +1275,8 @@ static bool start_capture(struct game_capture *gc)
 
 static inline bool capture_valid(struct game_capture *gc)
 {
-	if (!gc->dwm_capture && !IsWindow(gc->window))
+	if (!gc->process_id && gc->thread_id &&
+			!gc->dwm_capture && !IsWindow(gc->window))
 	       return false;
 	
 	return !object_signalled(gc->target_process);
