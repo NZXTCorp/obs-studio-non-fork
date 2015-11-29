@@ -742,7 +742,7 @@ static bool init_hook(struct game_capture *gc)
 		}
 	} else if (gc->config.thread_id || gc->config.process_id) {
 		info("attempting to hook process id %lu (thread id %lu)",
-				gc->config.thread_id, gc->config.process_id);
+				gc->config.process_id, gc->config.thread_id);
 	} else {
 		info("attempting to hook process: %s", gc->config.executable);
 	}
