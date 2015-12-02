@@ -1278,7 +1278,10 @@ static inline bool capture_valid(struct game_capture *gc)
 	if (!gc->process_id && gc->thread_id &&
 			!gc->dwm_capture && !IsWindow(gc->window))
 	       return false;
-	
+
+	if (object_signalled(gc->hook_exit))
+		return false;
+
 	return !object_signalled(gc->target_process);
 }
 

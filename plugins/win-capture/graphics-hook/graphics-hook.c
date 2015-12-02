@@ -324,6 +324,8 @@ static void free_overlay(void)
 
 static void free_hook(void)
 {
+	SetEvent(signal_exit);
+
 	if (filemap_hook_info) {
 		CloseHandle(filemap_hook_info);
 		filemap_hook_info = NULL;
