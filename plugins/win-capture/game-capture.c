@@ -77,6 +77,9 @@ struct game_capture_config {
 struct game_capture {
 	obs_source_t                  *source;
 
+	signal_handler_t              *signals;
+	struct calldata               calldata;
+
 	struct cursor_data            cursor_data;
 	HANDLE                        injector_process;
 	uint32_t                      cx;
@@ -212,6 +215,8 @@ static void stop_capture(struct game_capture *gc)
 	gc->wait_for_target_startup = false;
 	gc->active = false;
 	gc->capturing = false;
+
+	signal_handler_signal(gc->signals, "stop_capture", &gc->calldata);
 }
 
 static inline void free_config(struct game_capture_config *config)
@@ -233,6 +238,9 @@ static void game_capture_destroy(void *data)
 	obs_leave_graphics();
 
 	free_config(&gc->config);
+
+	calldata_free(&gc->calldata);
+
 	bfree(gc);
 }
 
@@ -365,12 +373,24 @@ static void game_capture_update(void *data, obs_data_t *settings)
 	}
 }
 
+static const char *capture_signals[] = {
+	"void start_capture(ptr source)",
+	"void stop_capture(ptr source)",
+	NULL
+};
+
 static void *game_capture_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct game_capture *gc = bzalloc(sizeof(*gc));
 	gc->source = source;
 	gc->initial_config = true;
 	gc->retry_interval = DEFAULT_RETRY_INTERVAL;
+
+	gc->signals = obs_source_get_signal_handler(source);
+	signal_handler_add_array(gc->signals, capture_signals);
+
+	calldata_init(&gc->calldata);
+	calldata_set_ptr(&gc->calldata, "source", source);
 
 	game_capture_update(gc, settings);
 	return gc;
@@ -1269,6 +1289,8 @@ static bool start_capture(struct game_capture *gc)
 			return false;
 		}
 	}
+
+	signal_handler_signal(gc->signals, "start_capture", &gc->calldata);
 
 	return true;
 }
