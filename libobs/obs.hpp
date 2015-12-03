@@ -21,6 +21,9 @@
 
 #include "obs.h"
 
+#include <functional>
+#include <memory>
+
 /* RAII wrappers */
 
 template<typename T, void addref(T), void release(T)>
@@ -282,6 +285,184 @@ inline signal_handler_t *OBSGetSignalHandler(const obs_output_t *output)
 {
 	return obs_output_get_signal_handler(output);
 }
+
+template <typename Owner, typename WeakOwner,
+	 WeakOwner get_weak_ref(typename Owner::WrappedType) = OBSGetWeakRef,
+	 Owner get_ref(typename WeakOwner::WrappedType) = OBSGetStrongRef>
+class OBSOwnedSignal {
+	using Callback_t = std::function<void(calldata_t*)>;
+	using Trampoline_t = void(*)(void*, calldata_t*);
+
+	std::unique_ptr<Callback_t> callback;
+	WeakOwner         owner;
+	signal_handler_t  *handler   = nullptr;
+	const char        *signal    = nullptr;
+	void              *target    = nullptr;
+	Trampoline_t      trampoline = nullptr;
+	bool              connected  = false;
+
+	Callback_t &GetCallback()
+	{
+		if (!callback)
+			callback.reset(new Callback_t{});
+
+		return *callback.get();
+	}
+
+	bool Invalid()
+	{
+		return !handler || !signal || !target || !trampoline;
+	}
+
+public:
+	~OBSOwnedSignal() {Disconnect();}
+
+	OBSOwnedSignal() = default;
+
+	template <typename Func>
+	OBSOwnedSignal(typename Owner::WrappedType owner, const char *signal,
+			Func &&func)
+		: callback(new Callback_t{func}),
+		  owner(get_weak_ref(owner)),
+		  handler(OBSGetSignalHandler(owner)),
+		  signal(signal),
+		  target(callback->target<Func>())
+	{
+		trampoline = [](void *param, calldata_t *data)
+		{
+			(*static_cast<Func*>(param))(data);
+		};
+
+		Connect();
+	}
+
+	OBSOwnedSignal(const OBSOwnedSignal &) = delete;
+	OBSOwnedSignal(OBSOwnedSignal &&other)
+		: callback(std::move(other.callback)),
+		  owner(std::move(other.owner)),
+		  handler(std::move(other.handler)),
+		  signal(std::move(other.signal)),
+		  target(std::move(other.target)),
+		  trampoline(std::move(other.trampoline)),
+		  connected(std::move(other.connected))
+	{
+		other.handler = nullptr;
+		other.signal = nullptr;
+		other.target = nullptr;
+		other.trampoline = nullptr;
+		other.connected = false;
+	}
+
+	OBSOwnedSignal &operator=(const OBSOwnedSignal &) = delete;
+	OBSOwnedSignal &operator=(OBSOwnedSignal &&other)
+	{
+		Disconnect();
+
+		callback = std::move(other.callback);
+		owner = std::move(other.owner);
+		handler = std::move(other.handler);
+		signal = std::move(other.signal);
+		target = std::move(other.target);
+		trampoline = std::move(other.trampoline);
+		connected = std::move(other.connected);
+
+		other.handler = nullptr;
+		other.signal = nullptr;
+		other.target = nullptr;
+		other.trampoline = nullptr;
+		other.connected = false;
+
+		return *this;
+	}
+
+	template <typename Func>
+	OBSOwnedSignal &ConnectTo(typename Owner::WrappedType owner_,
+			const char *signal_, Func &&func)
+	{
+		Disconnect();
+
+		GetCallback() = func;
+		owner = get_weak_ref(owner);
+		handler = OBSGetSignalHandler(owner);
+		signal = signal;
+		target = callback->target<Func>();
+
+		trampoline = [](void *param, calldata_t *data)
+		{
+			(*static_cast<Func*>(param))(data);
+		};
+
+		return Connect();
+	}
+
+	OBSOwnedSignal &Connect()
+	{
+		if (connected || Invalid())
+			return *this;
+
+		auto ref = get_ref(owner);
+		if (!ref)
+			return *this;
+
+		signal_handler_connect(handler, signal, trampoline, target);
+		connected = true;
+
+		return *this;
+	}
+
+	OBSOwnedSignal &Disconnect()
+	{
+		if (!connected || Invalid())
+			return *this;
+
+		auto ref = get_ref(owner);
+		if (ref)
+			signal_handler_disconnect(handler, signal, trampoline,
+					target);
+
+		connected = false;
+
+		return *this;
+	}
+
+	OBSOwnedSignal &SetOwner(typename Owner::WrappedType owner_)
+	{
+		if (!connected) {
+			owner = get_weak_ref(owner_);
+			handler = OBSGetSignalHandler(owner_);
+		}
+
+		return *this;
+	}
+
+	OBSOwnedSignal &SetSignal(const char *signal_)
+	{
+		if (!connected)
+			signal = signal_;
+
+		return *this;
+	}
+
+	template <typename Func>
+	OBSOwnedSignal &SetFunc(Func &&func)
+	{
+		if (connected)
+			return *this;
+
+		GetCallback() = func;
+		target = callback->target<Func>();
+
+		trampoline = [](void *param, calldata_t *data)
+		{
+			(*static_cast<Func*>(param))(data);
+		};
+
+		return *this;
+	}
+};
+
+using OBSSourceSignal = OBSOwnedSignal<OBSSource, OBSWeakSource>;
+using OBSOutputSignal = OBSOwnedSignal<OBSOutput, OBSWeakOutput>;
 
 class OBSContext {
 public:
