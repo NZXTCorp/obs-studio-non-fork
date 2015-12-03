@@ -90,6 +90,8 @@ public:
 	inline bool operator==(T p) const {return val == p;}
 	inline bool operator!=(T p) const {return val != p;}
 
+	using WrappedType = T;
+
 	friend OBSSource OBSGetStrongRef(obs_weak_source_t *weak);
 	friend OBSWeakSource OBSGetWeakRef(obs_source_t *source);
 
