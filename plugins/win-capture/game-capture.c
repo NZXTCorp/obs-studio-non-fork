@@ -78,7 +78,8 @@ struct game_capture {
 	obs_source_t                  *source;
 
 	signal_handler_t              *signals;
-	struct calldata               calldata;
+	struct calldata               start_calldata;
+	struct calldata               stop_calldata;
 
 	struct cursor_data            cursor_data;
 	HANDLE                        injector_process;
@@ -212,7 +213,7 @@ static void stop_capture(struct game_capture *gc)
 	}
 
 	if (gc->capturing)
-		signal_handler_signal(gc->signals, "stop_capture", &gc->calldata);
+		signal_handler_signal(gc->signals, "stop_capture", &gc->stop_calldata);
 
 	gc->copy_texture = NULL;
 	gc->wait_for_target_startup = false;
@@ -240,7 +241,8 @@ static void game_capture_destroy(void *data)
 
 	free_config(&gc->config);
 
-	calldata_free(&gc->calldata);
+	calldata_free(&gc->stop_calldata);
+	calldata_free(&gc->start_calldata);
 
 	bfree(gc);
 }
@@ -375,7 +377,7 @@ static void game_capture_update(void *data, obs_data_t *settings)
 }
 
 static const char *capture_signals[] = {
-	"void start_capture(ptr source)",
+	"void start_capture(ptr source, int width, int height)",
 	"void stop_capture(ptr source)",
 	NULL
 };
@@ -390,8 +392,13 @@ static void *game_capture_create(obs_data_t *settings, obs_source_t *source)
 	gc->signals = obs_source_get_signal_handler(source);
 	signal_handler_add_array(gc->signals, capture_signals);
 
-	calldata_init(&gc->calldata);
-	calldata_set_ptr(&gc->calldata, "source", source);
+	calldata_init(&gc->start_calldata);
+	calldata_set_int(&gc->start_calldata, "width", 0);
+	calldata_set_int(&gc->start_calldata, "height", 0);
+	calldata_set_ptr(&gc->start_calldata, "source", source);
+
+	calldata_init(&gc->stop_calldata);
+	calldata_set_ptr(&gc->stop_calldata, "source", source);
 
 	game_capture_update(gc, settings);
 	return gc;
@@ -1291,7 +1298,10 @@ static bool start_capture(struct game_capture *gc)
 		}
 	}
 
-	signal_handler_signal(gc->signals, "start_capture", &gc->calldata);
+	calldata_set_int(&gc->start_calldata, "width", gc->global_hook_info->base_cx);
+	calldata_set_int(&gc->start_calldata, "height", gc->global_hook_info->base_cy);
+
+	signal_handler_signal(gc->signals, "start_capture", &gc->start_calldata);
 
 	return true;
 }
