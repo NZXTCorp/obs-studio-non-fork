@@ -211,12 +211,13 @@ static void stop_capture(struct game_capture *gc)
 		gc->texture = NULL;
 	}
 
+	if (gc->capturing)
+		signal_handler_signal(gc->signals, "stop_capture", &gc->calldata);
+
 	gc->copy_texture = NULL;
 	gc->wait_for_target_startup = false;
 	gc->active = false;
 	gc->capturing = false;
-
-	signal_handler_signal(gc->signals, "stop_capture", &gc->calldata);
 }
 
 static inline void free_config(struct game_capture_config *config)
