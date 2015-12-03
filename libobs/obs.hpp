@@ -273,6 +273,16 @@ public:
 	}
 };
 
+inline signal_handler_t *OBSGetSignalHandler(const obs_source_t *source)
+{
+	return obs_source_get_signal_handler(source);
+}
+
+inline signal_handler_t *OBSGetSignalHandler(const obs_output_t *output)
+{
+	return obs_output_get_signal_handler(output);
+}
+
 class OBSContext {
 public:
 	inline OBSContext() {}
