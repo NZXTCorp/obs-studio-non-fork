@@ -180,6 +180,14 @@ static inline bool ipc_pipe_internal_open_pipe(ipc_pipe_client_t *pipe,
 		return false;
 	}
 
+	ULONG pid;
+	if (!GetNamedPipeServerProcessId(pipe->handle, &pid))
+		return false;
+
+	pipe->server_process = OpenProcess(SYNCHRONIZE, false, pid);
+	if (!pipe->server_process || pipe->server_process == INVALID_HANDLE_VALUE)
+		return false;
+
 	return !!SetNamedPipeHandleState(pipe->handle, &mode, NULL, NULL);
 }
 
