@@ -62,25 +62,25 @@ extern void capture_free(void);
 extern struct hook_info *global_hook_info;
 
 
-typedef bool (*overlay_init)(void);
-typedef void (*overlay_free)(void);
-typedef void (*overlay_compile_dxgi_shaders)(/*pD3DCompile*/void(*)(void));
-//typedef void (*overlay_draw_ddraw)(void);
-typedef void (*overlay_draw_d3d8)(void /*IDirect3DDevice8*/ *);
-typedef void (*overlay_draw_d3d9)(void /*IDirect3DDevice9*/ *);
-typedef void (*overlay_draw_d3d10)(void /*IDXGISwapChain*/ *);
-typedef void (*overlay_draw_d3d11)(void /*IDXGISwapChain*/ *);
-typedef void (*overlay_draw_gl)(HDC);
+typedef bool (*overlay_init_t)(void (*hlog)(const char *fmt, ...));
+typedef void (*overlay_free_t)(void);
+typedef void (*overlay_compile_dxgi_shaders_t)(/*pD3DCompile*/void(*)(void));
+//typedef void (*overlay_draw_ddraw_t)(void);
+typedef void (*overlay_draw_d3d8_t)(void /*IDirect3DDevice8*/ *);
+typedef void (*overlay_draw_d3d9_t)(void /*IDirect3DDevice9*/ *);
+typedef void (*overlay_draw_d3d10_t)(void /*IDXGISwapChain*/ *);
+typedef void (*overlay_draw_d3d11_t)(void /*IDXGISwapChain*/ *);
+typedef void (*overlay_draw_gl_t)(HDC);
 struct overlay_info {
-	overlay_init init;
-	overlay_free free;
-	overlay_compile_dxgi_shaders compile_dxgi_shaders;
-	//overlay_draw_ddraw draw_ddraw;
-	overlay_draw_d3d8 draw_d3d8;
-	overlay_draw_d3d9 draw_d3d9;
-	overlay_draw_d3d10 draw_d3d10;
-	overlay_draw_d3d11 draw_d3d11;
-	overlay_draw_gl draw_gl;
+	overlay_init_t init;
+	overlay_free_t free;
+	overlay_compile_dxgi_shaders_t compile_dxgi_shaders;
+	//overlay_draw_ddraw_t draw_ddraw;
+	overlay_draw_d3d8_t draw_d3d8;
+	overlay_draw_d3d9_t draw_d3d9;
+	overlay_draw_d3d10_t draw_d3d10;
+	overlay_draw_d3d11_t draw_d3d11;
+	overlay_draw_gl_t draw_gl;
 };
 extern struct overlay_info overlay_info;
 

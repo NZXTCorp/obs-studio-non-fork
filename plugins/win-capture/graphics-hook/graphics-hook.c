@@ -200,11 +200,12 @@ static void init_overlay_info(void)
 	}
 
 #define LOAD_SYM(x) \
-	overlay_info.x = (overlay_ ## x) GetProcAddress(overlay_dll, #x)
+	overlay_info.x = (overlay_ ## x ## _t) \
+		GetProcAddress(overlay_dll, "overlay_" #x)
 	LOAD_SYM(init);
 	LOAD_SYM(free);
 
-	if (overlay_info.init && !overlay_info.init()) {
+	if (overlay_info.init && !overlay_info.init(hlog)) {
 		hlog("Overlay init returned false");
 		free_overlay();
 		return;
