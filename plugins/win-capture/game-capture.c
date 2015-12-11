@@ -32,6 +32,7 @@
 #define SETTING_CAPTURE_OVERLAYS "capture_overlays"
 #define SETTING_ANTI_CHEAT_HOOK  "anti_cheat_hook"
 #define SETTING_OVERLAY_DLL      "overlay_dll"
+#define SETTING_OVERLAY_DLL64    "overlay_dll64"
 #define SETTING_PROCESS_ID       "process_id"
 #define SETTING_THREAD_ID        "thread_id"
 
@@ -70,6 +71,7 @@ struct game_capture_config {
 	bool                          capture_overlays : 1;
 	bool                          anticheat_hook : 1;
 	char                          *overlay_dll;
+	char                          *overlay_dll64;
 	DWORD                         process_id;
 	DWORD                         thread_id;
 };
@@ -227,6 +229,7 @@ static inline void free_config(struct game_capture_config *config)
 	bfree(config->class);
 	bfree(config->executable);
 	bfree(config->overlay_dll);
+	bfree(config->overlay_dll64);
 	memset(config, 0, sizeof(*config));
 }
 
@@ -290,6 +293,8 @@ static inline void get_config(struct game_capture_config *cfg,
 
 	cfg->overlay_dll = bstrdup(
 			obs_data_get_string(settings, SETTING_OVERLAY_DLL));
+	cfg->overlay_dll64 = bstrdup(
+			obs_data_get_string(settings, SETTING_OVERLAY_DLL64));
 
 	cfg->process_id = (DWORD)obs_data_get_int(settings, SETTING_PROCESS_ID);
 	cfg->thread_id = (DWORD)obs_data_get_int(settings, SETTING_THREAD_ID);
@@ -335,6 +340,9 @@ static inline bool capture_needs_reset(struct game_capture_config *cfg1,
 
 	} else if (cfg1->overlay_dll != cfg2->overlay_dll ||
 			strcmp(cfg1->overlay_dll, cfg2->overlay_dll)) {
+		return true;
+	} else if (cfg1->overlay_dll64 != cfg2->overlay_dll64 ||
+			strcmp(cfg1->overlay_dll64, cfg2->overlay_dll64)) {
 		return true;
 	}
 
@@ -583,9 +591,10 @@ static inline bool init_hook_info(struct game_capture *gc)
 	gc->global_hook_info->cy = gc->config.scale_cy;
 	reset_frame_interval(gc);
 
-	strncpy(gc->global_hook_info->overlay_dll_path,
-			gc->config.overlay_dll ? gc->config.overlay_dll : "",
-			MAX_PATH);
+	const char *path = gc->process_is_64bit ?
+		(gc->config.overlay_dll ? gc->config.overlay_dll : "") :
+		(gc->config.overlay_dll64 ? gc->config.overlay_dll64 : "");
+	strncpy(gc->global_hook_info->overlay_dll_path, path, MAX_PATH);
 
 	obs_enter_graphics();
 	if (!gs_shared_texture_available())
@@ -1668,6 +1677,10 @@ static obs_properties_t *game_capture_properties(void *data)
 
 	obs_property_t *o_dll = obs_properties_add_text(ppts,
 			SETTING_OVERLAY_DLL, "overlay_dll (invisible)",
+			OBS_TEXT_DEFAULT);
+	obs_property_set_visible(o_dll, false);
+	o_dll = obs_properties_add_text(ppts,
+			SETTING_OVERLAY_DLL64, "overlay_dll64 (invisible)",
 			OBS_TEXT_DEFAULT);
 	obs_property_set_visible(o_dll, false);
 
