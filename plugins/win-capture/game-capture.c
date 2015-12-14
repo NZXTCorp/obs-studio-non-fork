@@ -592,8 +592,8 @@ static inline bool init_hook_info(struct game_capture *gc)
 	reset_frame_interval(gc);
 
 	const char *path = gc->process_is_64bit ?
-		(gc->config.overlay_dll ? gc->config.overlay_dll : "") :
-		(gc->config.overlay_dll64 ? gc->config.overlay_dll64 : "");
+		(gc->config.overlay_dll64 ? gc->config.overlay_dll64 : "") :
+		(gc->config.overlay_dll ? gc->config.overlay_dll : "");
 	strncpy(gc->global_hook_info->overlay_dll_path, path, MAX_PATH);
 
 	obs_enter_graphics();
