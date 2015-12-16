@@ -493,7 +493,7 @@ static inline bool is_64bit_process(HANDLE process)
 static inline bool open_target_process(struct game_capture *gc)
 {
 	gc->target_process = open_process(
-			PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+			PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | SYNCHRONIZE,
 			false, gc->process_id);
 	if (!gc->target_process) {
 		warn("could not open process: %s", gc->config.executable);
@@ -1331,7 +1331,8 @@ static void game_capture_tick(void *data, float seconds)
 {
 	struct game_capture *gc = data;
 
-	if (gc->hook_stop && object_signalled(gc->hook_stop)) {
+	if ((gc->hook_stop && object_signalled(gc->hook_stop)) ||
+		(gc->target_process && object_signalled(gc->target_process))) {
 		stop_capture(gc);
 	}
 
