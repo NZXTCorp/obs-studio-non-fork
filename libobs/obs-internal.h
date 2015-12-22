@@ -555,6 +555,8 @@ struct obs_source {
 	uint64_t                        push_to_mute_stop_time;
 	uint64_t                        push_to_talk_delay;
 	uint64_t                        push_to_talk_stop_time;
+
+	calldata_t                      push_to_talk_active_data;
 };
 
 extern const struct obs_source_info *find_source(struct darray *list,

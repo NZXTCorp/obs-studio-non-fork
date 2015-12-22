@@ -83,6 +83,7 @@ static const char *source_signals[] = {
 	"void push_to_mute_delay(ptr source, int delay)",
 	"void push_to_talk_changed(ptr source, bool enabled)",
 	"void push_to_talk_delay(ptr source, int delay)",
+	"void push_to_talk_active(ptr source, bool active)"
 	"void enable(ptr source, bool enabled)",
 	"void rename(ptr source, string new_name, string prev_name)",
 	"void volume(ptr source, in out float volume)",
@@ -210,6 +211,10 @@ static void obs_source_hotkey_push_to_talk(void *data,
 
 	pthread_mutex_lock(&source->audio_mutex);
 	source->push_to_talk_pressed = pressed;
+
+	calldata_set_bool(&source->push_to_talk_active_data, "active", pressed);
+	signal_handler_signal(source->context.signals, "push_to_talk_active",
+		&source->push_to_talk_active_data);
 	pthread_mutex_unlock(&source->audio_mutex);
 }
 
@@ -221,6 +226,10 @@ static void obs_source_init_audio_hotkeys(struct obs_source *source)
 		source->push_to_talk_key = OBS_INVALID_HOTKEY_ID;
 		return;
 	}
+
+	calldata_init(&source->push_to_talk_active_data);
+	calldata_set_bool(&source->push_to_talk_active_data, "active", false);
+	calldata_set_ptr(&source->push_to_talk_active_data, "source", source);
 
 	source->mute_unmute_key = obs_hotkey_pair_register_source(source,
 			"libobs.mute", obs->hotkeys.mute,
@@ -365,6 +374,8 @@ void obs_source_destroy(struct obs_source *source)
 	obs_hotkey_unregister(source->push_to_talk_key);
 	obs_hotkey_unregister(source->push_to_mute_key);
 	obs_hotkey_pair_unregister(source->mute_unmute_key);
+
+	calldata_free(&source->push_to_talk_active_data);
 
 	for (i = 0; i < source->async_cache.num; i++)
 		obs_source_frame_decref(source->async_cache.array[i].frame);
