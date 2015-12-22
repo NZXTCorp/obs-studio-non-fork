@@ -971,6 +971,142 @@ void profile_snapshot_free(profiler_snapshot_t *snap)
 	bfree(snap);
 }
 
+static void copy_snapshot_entry(profiler_snapshot_entry_t *dst,
+		const profiler_snapshot_entry_t *src)
+{
+	da_init(dst->children);
+	da_init(dst->times);
+	da_init(dst->times_between_calls);
+
+	da_copy(dst->children, src->children);
+	da_copy(dst->times, src->times);
+	da_copy(dst->times_between_calls, src->times_between_calls);
+
+	for (size_t i = 0; i < dst->children.num; i++)
+		copy_snapshot_entry(&dst->children.array[i],
+				&src->children.array[i]);
+}
+
+profiler_snapshot_t *profile_snapshot_copy_create(
+		const profiler_snapshot_t *src)
+{
+	if (!src)
+		return NULL;
+
+	profiler_snapshot_t *snap = bzalloc(sizeof(profiler_snapshot_t));
+
+	da_copy(snap->roots, src->roots);
+
+	for (size_t i = 0; i < snap->roots.num; i++)
+		copy_snapshot_entry(&src->roots.array[i],
+				&snap->roots.array[i]);
+
+	return snap;
+}
+
+static bool diff_times(profiler_time_entries_t *e_times,
+		const profiler_time_entries_t *o_times,
+		uint64_t *min, uint64_t *max)
+{
+	bool changed = false;
+
+	for (size_t i = 0, j = 0; i < e_times->num && j < o_times->num;) {
+		if (e_times->array[i].time_delta <
+				o_times->array[j].time_delta) {
+			j += 1;
+			continue;
+		}
+
+		if (e_times->array[i].time_delta >
+				o_times->array[j].time_delta) {
+			i += 1;
+			continue;
+		}
+		
+		e_times->array[i].count -= o_times->array[j].count;
+
+		if (e_times->array[i].count != 0) {
+			i += 1;
+			changed = true;
+		} else
+			da_erase((*e_times), i);
+
+		j += 1;
+	}
+
+	if (e_times->num) {
+		*min = e_times->array[0].time_delta;
+		*max = e_times->array[e_times->num - 1].time_delta;
+	} else {
+		*min = 0;
+		*max = 0;
+	}
+
+	return changed;
+}
+
+static bool diff_entry(profiler_snapshot_entry_t *entry,
+		const profiler_snapshot_entry_t *o_ent,
+		const profiler_snapshot_entry_t *n_ent)
+{
+#define CHILD(x, i) &x->children.array[i]
+	size_t offset = 0;
+	for (size_t i = 0; i < o_ent->children.num && i < n_ent->children.num;
+			i++) {
+		profiler_snapshot_entry_t *entry_ = CHILD(entry, i - offset);
+		profiler_snapshot_entry_t *o_ent_ = CHILD(o_ent, i);
+		profiler_snapshot_entry_t *n_ent_ = CHILD(n_ent, i);
+
+		if (diff_entry(entry_, o_ent_, n_ent_))
+			continue;
+
+		free_snapshot_entry(entry_);
+		da_erase(entry->children, i - offset);
+		
+		offset += 1;
+	}
+#undef CHILD
+
+	bool changed = entry->children.num != 0;
+
+	changed = diff_times(&entry->times, &o_ent->times,
+			&entry->min_time, &entry->max_time) || changed;
+	changed = diff_times(&entry->times_between_calls,
+			&o_ent->times_between_calls,
+			&entry->min_time_between_calls,
+			&entry->max_time_between_calls) || changed;
+
+	entry->overall_count -= o_ent->overall_count;
+
+	return changed;
+}
+
+profiler_snapshot_t *profile_snapshot_diff(const profiler_snapshot_t *old,
+		const profiler_snapshot_t *new)
+{
+	if (!old || !new)
+		return NULL;
+
+	profiler_snapshot_t *snap = profile_snapshot_copy_create(new);
+
+	size_t offset = 0;
+	for (size_t i = 0; i < old->roots.num && i < new->roots.num; i++) {
+		profiler_snapshot_entry_t *o_ent = &old->roots.array[i];
+		profiler_snapshot_entry_t *n_ent = &new->roots.array[i];
+		profiler_snapshot_entry_t *entry = &snap->roots.array[i - offset];
+
+		if (diff_entry(entry, o_ent, n_ent))
+			continue;
+
+		free_snapshot_entry(entry);
+		da_erase(snap->roots, i - offset);
+
+		offset += 1;
+	}
+
+	return snap;
+}
+
 typedef void (*dump_csv_func)(void *data, struct dstr *buffer);
 static void entry_dump_csv(struct dstr *buffer,
 		const profiler_snapshot_entry_t *parent,

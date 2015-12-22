@@ -68,6 +68,9 @@ typedef bool (*profiler_entry_enum_func)(void *context,
 
 EXPORT profiler_snapshot_t *profile_snapshot_create(void);
 EXPORT void profile_snapshot_free(profiler_snapshot_t *snap);
+EXPORT profiler_snapshot_t *profile_snapshot_diff(
+		const profiler_snapshot_t *old,
+		const profiler_snapshot_t *new_);
 
 EXPORT bool profiler_snapshot_dump_csv(const profiler_snapshot_t *snap,
 		const char *filename);
