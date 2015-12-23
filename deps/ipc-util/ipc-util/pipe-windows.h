@@ -30,6 +30,8 @@ struct ipc_pipe_server {
 
 	ipc_pipe_read_t            read_callback;
 	void                       *param;
+
+	int                        overlapped_size;
 };
 
 struct ipc_pipe_client {

@@ -105,6 +105,13 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 {
 	ipc_pipe_server_t *pipe = param;
 	uint8_t buf[IPC_PIPE_BUF_SIZE];
+	uint8_t *big_buf = NULL;
+
+	if (pipe->overlapped_size > 0)
+		big_buf = malloc(pipe->overlapped_size);
+
+	uint8_t *rbuf = big_buf ? big_buf : buf;
+	DWORD read_size = big_buf ? pipe->overlapped_size : IPC_PIPE_BUF_SIZE;
 
 	/* wait for connection */
 	DWORD wait = WaitForSingleObject(pipe->ready_event, INFINITE);
@@ -117,7 +124,7 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 		DWORD bytes = 0;
 		bool success;
 
-		success = !!ReadFile(pipe->handle, buf, IPC_PIPE_BUF_SIZE, NULL,
+		success = !!ReadFile(pipe->handle, rbuf, read_size, NULL,
 				&pipe->overlap);
 		if (!success && !ipc_pipe_internal_io_pending()) {
 			break;
@@ -131,10 +138,11 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 		success = !!GetOverlappedResult(pipe->handle, &pipe->overlap,
 				&bytes, true);
 		if (!success || !bytes) {
+			DWORD res = GetLastError();
 			break;
 		}
 
-		ipc_pipe_internal_append_bytes(pipe, buf, (size_t)bytes);
+		ipc_pipe_internal_append_bytes(pipe, rbuf, (size_t)bytes);
 
 		if (success) {
 			pipe->read_callback(pipe->param, pipe->read_data,
@@ -143,6 +151,7 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 		}
 	}
 
+	free(big_buf);
 	pipe->read_callback(pipe->param, NULL, 0);
 	return 0;
 }
@@ -193,11 +202,12 @@ static inline bool ipc_pipe_internal_open_pipe(ipc_pipe_client_t *pipe,
 
 /* ------------------------------------------------------------------------- */
 
-bool ipc_pipe_server_start(ipc_pipe_server_t *pipe, const char *name,
-		ipc_pipe_read_t read_callback, void *param)
+bool ipc_pipe_server_start_buf(ipc_pipe_server_t *pipe, const char *name,
+		ipc_pipe_read_t read_callback, void *param, int buffer)
 {
 	pipe->read_callback = read_callback;
 	pipe->param = param;
+	pipe->overlapped_size = buffer;
 
 	if (!ipc_pipe_internal_create_events(pipe)) {
 		goto error;
@@ -217,6 +227,13 @@ bool ipc_pipe_server_start(ipc_pipe_server_t *pipe, const char *name,
 error:
 	ipc_pipe_server_free(pipe);
 	return false;
+}
+
+bool ipc_pipe_server_start(ipc_pipe_server_t *pipe, const char *name,
+		ipc_pipe_read_t read_callback, void *param)
+{
+	return ipc_pipe_server_start_buf(pipe, name, read_callback, param,
+			-1);
 }
 
 void ipc_pipe_server_free(ipc_pipe_server_t *pipe)
