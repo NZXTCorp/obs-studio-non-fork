@@ -708,6 +708,9 @@ static bool obs_init(const char *locale, const char *module_config_path,
 	if (!obs_init_hotkeys())
 		return false;
 
+	if (pthread_mutex_init(&obs->video.frame_tracker_mutex, NULL) != 0)
+		return false;
+
 	if (module_config_path)
 		obs->module_config_path = bstrdup(module_config_path);
 	obs->locale = bstrdup(locale);
@@ -778,6 +781,8 @@ void obs_shutdown(void)
 
 	stop_video();
 	stop_hotkeys();
+
+	pthread_mutex_destroy(&obs->video.frame_tracker_mutex);
 
 	obs_free_data();
 	obs_free_video();

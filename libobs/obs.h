@@ -307,6 +307,8 @@ EXPORT bool obs_get_video_info(struct obs_video_info *ovi);
 /** Gets the current audio settings, returns false if no audio */
 EXPORT bool obs_get_audio_info(struct obs_audio_info *oai);
 
+EXPORT video_tracked_frame_id obs_track_next_frame(void);
+
 /**
  * Opens a plugin module directly from a specific path.
  *

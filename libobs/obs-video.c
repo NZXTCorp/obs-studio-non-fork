@@ -515,7 +515,7 @@ static inline void output_video_data(struct obs_core_video *video,
 	info = video_output_get_info(video->video);
 
 	locked = video_output_lock_frame(video->video, &output_frame, count,
-			input_frame->timestamp);
+			input_frame->timestamp, input_frame->tracked_id);
 	if (locked) {
 		if (video->gpu_conversion) {
 			set_gpu_converted_data(video, &output_frame,
@@ -591,6 +591,13 @@ static inline void output_frame(void)
 		circlebuf_pop_front(&video->vframe_info_buffer, &vframe_info,
 				sizeof(vframe_info));
 
+		pthread_mutex_lock(&video->frame_tracker_mutex);
+		if (video->tracked_frame_id) {
+			frame.tracked_id = video->tracked_frame_id;
+			video->tracked_frame_id = 0;
+		}
+		pthread_mutex_unlock(&video->frame_tracker_mutex);
+
 		frame.timestamp = vframe_info.timestamp;
 		profile_start(output_frame_output_video_data_name);
 		output_video_data(video, &frame, vframe_info.count);
@@ -644,4 +651,19 @@ void *obs_video_thread(void *param)
 
 	UNUSED_PARAMETER(param);
 	return NULL;
+}
+
+video_tracked_frame_id obs_track_next_frame(void)
+{
+	if (!obs)
+		return 0;
+
+	pthread_mutex_lock(&obs->video.frame_tracker_mutex);
+	if (!obs->video.tracked_frame_id)
+		obs->video.tracked_frame_id = ++obs->video.last_tracked_frame_id;
+
+	video_tracked_frame_id tracked_id = obs->video.tracked_frame_id;
+	pthread_mutex_unlock(&obs->video.frame_tracker_mutex);
+
+	return tracked_id;
 }

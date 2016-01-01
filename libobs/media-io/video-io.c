@@ -394,7 +394,7 @@ const struct video_output_info *video_output_get_info(const video_t *video)
 }
 
 bool video_output_lock_frame(video_t *video, struct video_frame *frame,
-		int count, uint64_t timestamp)
+		int count, uint64_t timestamp, video_tracked_frame_id tracked_id)
 {
 	struct cached_frame_info *cfi;
 	bool locked;
@@ -416,6 +416,7 @@ bool video_output_lock_frame(video_t *video, struct video_frame *frame,
 		cfi = &video->cache[video->last_added];
 		cfi->frame.timestamp = timestamp;
 		cfi->count = count;
+		cfi->frame.tracked_id = tracked_id;
 
 		memcpy(frame, &cfi->frame, sizeof(*frame));
 

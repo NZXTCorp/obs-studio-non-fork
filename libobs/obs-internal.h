@@ -257,6 +257,10 @@ struct obs_core_video {
 	uint32_t                        base_height;
 	float                           color_matrix[16];
 	enum obs_scale_type             scale_type;
+
+	pthread_mutex_t                 frame_tracker_mutex;
+	video_tracked_frame_id          last_tracked_frame_id;
+	video_tracked_frame_id          tracked_frame_id;
 };
 
 struct obs_core_audio {
@@ -703,6 +707,11 @@ struct encoder_callback {
 	void *param;
 };
 
+struct tracked_frame {
+	int64_t pts;
+	video_tracked_frame_id tracked_id;
+};
+
 struct obs_encoder {
 	struct obs_context_data         context;
 	struct obs_encoder_info         info;
@@ -751,6 +760,8 @@ struct obs_encoder {
 
 	pthread_mutex_t                 callbacks_mutex;
 	DARRAY(struct encoder_callback) callbacks;
+
+	DARRAY(struct tracked_frame)    tracked_frames;
 
 	const char                      *profile_encoder_encode_name;
 };

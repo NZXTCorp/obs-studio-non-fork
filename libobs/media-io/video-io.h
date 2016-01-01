@@ -30,6 +30,8 @@ struct video_frame;
 struct video_output;
 typedef struct video_output video_t;
 
+typedef uint64_t video_tracked_frame_id;
+
 enum video_format {
 	VIDEO_FORMAT_NONE,
 
@@ -67,6 +69,8 @@ struct video_data {
 	uint8_t           *data[MAX_AV_PLANES];
 	uint32_t          linesize[MAX_AV_PLANES];
 	uint64_t          timestamp;
+
+	video_tracked_frame_id tracked_id;
 };
 
 struct video_output_info {
@@ -163,7 +167,7 @@ EXPORT bool video_output_active(const video_t *video);
 EXPORT const struct video_output_info *video_output_get_info(
 		const video_t *video);
 EXPORT bool video_output_lock_frame(video_t *video, struct video_frame *frame,
-		int count, uint64_t timestamp);
+		int count, uint64_t timestamp, video_tracked_frame_id tracked_id);
 EXPORT void video_output_unlock_frame(video_t *video);
 EXPORT uint64_t video_output_get_frame_time(const video_t *video);
 EXPORT void video_output_stop(video_t *video);

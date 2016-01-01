@@ -77,6 +77,8 @@ struct encoder_packet {
 
 	/** Encoder from which the track originated from */
 	obs_encoder_t         *encoder;
+
+	video_tracked_frame_id tracked_id;
 };
 
 /** Encoder input frame */

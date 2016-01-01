@@ -221,6 +221,8 @@ static void obs_encoder_actually_destroy(obs_encoder_t *encoder)
 		da_free(encoder->outputs);
 		pthread_mutex_unlock(&encoder->outputs_mutex);
 
+		da_free(encoder->tracked_frames);
+
 		blog(LOG_INFO, "encoder '%s' destroyed", encoder->context.name);
 
 		free_audio_buffers(encoder);
@@ -747,6 +749,16 @@ static inline void do_encode(struct obs_encoder *encoder,
 		 * you do not want to use relative timestamps here */
 		pkt.dts_usec = encoder->start_ts / 1000 + packet_dts_usec(&pkt);
 
+		for (size_t i = 0; i < encoder->tracked_frames.num; i++) {
+			struct tracked_frame *tf =
+				&encoder->tracked_frames.array[i];
+			if (tf->pts == pkt.pts) {
+				pkt.tracked_id = tf->tracked_id;
+				da_erase(encoder->tracked_frames, i);
+				break;
+			}
+		}
+
 		pthread_mutex_lock(&encoder->callbacks_mutex);
 
 		for (size_t i = encoder->callbacks.num; i > 0; i--) {
@@ -781,6 +793,13 @@ static void receive_video(void *param, struct video_data *frame)
 
 	enc_frame.frames = 1;
 	enc_frame.pts    = encoder->cur_pts;
+
+	if (frame->tracked_id) {
+		struct tracked_frame *tf =
+			da_push_back_new(encoder->tracked_frames);
+		tf->pts = enc_frame.pts;
+		tf->tracked_id = frame->tracked_id;
+	}
 
 	do_encode(encoder, &enc_frame);
 

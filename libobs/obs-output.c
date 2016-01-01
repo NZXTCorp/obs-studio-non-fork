@@ -47,6 +47,7 @@ static const char *output_signals[] = {
 	"void deactivate(ptr output)",
 	"void reconnect(ptr output)",
 	"void reconnect_success(ptr output)",
+	"void sent_tracked_frame(ptr output, int id, int frame_number)",
 	NULL
 };
 
@@ -860,8 +861,21 @@ static inline void send_interleaved(struct obs_output *output)
 		output->total_frames++;
 
 	da_erase(output->interleaved_packets, 0);
-	if (!output->stopped)
+	if (!output->stopped) {
 		output->info.encoded_packet(output->context.data, &out);
+
+		if (out.tracked_id) {
+			struct calldata params = {0};
+			calldata_set_int(&params, "id", out.tracked_id);
+			calldata_set_int(&params, "frame_number",
+					output->total_frames);
+			calldata_set_ptr(&params, "output", output);
+			signal_handler_signal(output->context.signals,
+					"sent_tracked_frame", &params);
+			calldata_free(&params);
+		}
+	}
+
 	obs_free_encoder_packet(&out);
 }
 
