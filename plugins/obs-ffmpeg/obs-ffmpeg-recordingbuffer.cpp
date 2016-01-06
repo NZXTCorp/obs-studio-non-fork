@@ -323,13 +323,26 @@ private:
 		return true;
 	}
 
+	int64_t GetStartPTS()
+	{
+		if (initial_segments.size())
+			return initial_segments.front()->first_pts;
+		if (new_segments.size())
+			return new_segments.front()->first_pts;
+		return final_segment.first_pts;
+	}
+
 	void OutputThread()
 	{
 		if (WriteOutput()) {
+			auto start_pts = GetStartPTS();
+
 			calldata_t data{};
 			calldata_init(&data);
 			calldata_set_ptr(&data, "output", stream->output);
 			calldata_set_string(&data, "filename", path);
+			calldata_set_int(&data, "frames", total_frames);
+			calldata_set_int(&data, "start_pts", start_pts);
 			signal_handler_signal(stream->signal,
 					"buffer_output_finished", &data);
 		}
@@ -386,7 +399,8 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 
 	auto signal = obs_output_get_signal_handler(output);
 	signal_handler_add(signal,
-			"void buffer_output_finished(string filename)");
+			"void buffer_output_finished(string filename, "
+			"int frames, int start_pts)");
 	stream->signal = signal;
 
 	UNUSED_PARAMETER(settings);
