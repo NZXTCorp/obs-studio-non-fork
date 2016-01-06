@@ -164,6 +164,7 @@ struct buffer_output {
 	bool              exit_thread = false;
 
 	atomic<bool>      thread_finished{};
+	int               total_frames = 0;
 
 	buffer_output(ffmpeg_muxer *stream, const char *path_,
 			video_tracked_frame_id tracked_id=0)
@@ -259,14 +260,25 @@ struct buffer_output {
 	}
 
 private:
+	bool OutputPackets(packets_segment &seg)
+	{
+		seg.Finalize();
+		for (auto &pkt : seg.pkts) {
+			if (!write_packet(stream, pipe.get(), &pkt))
+				return false;
+
+			if (pkt.type == OBS_ENCODER_VIDEO)
+				total_frames += 1;
+		}
+
+		return true;
+	}
+
 	bool OutputSegments(const vector<shared_ptr<packets_segment>> &segments)
 	{
-		for (auto &seg : segments) {
-			seg->Finalize();
-			for (auto &pkt : seg->pkts)
-				if (!write_packet(stream, pipe.get(), &pkt))
-					return false;
-		}
+		for (auto &seg : segments)
+			if (!OutputPackets(*seg))
+				return false;
 
 		return true;
 	}
@@ -302,12 +314,10 @@ private:
 			return false;
 		}
 
-		final_segment.Finalize();
-		for (auto &pkt : final_segment.pkts) {
-			if (!write_packet(stream, pipe.get(), &pkt)) {
-				warn("Failed to write packet from final segment");
-				return false;
-			}
+
+		if (!OutputPackets(final_segment)) {
+			warn("Failed to write final segment");
+			return false;
 		}
 
 		return true;
