@@ -211,6 +211,7 @@ static void init_overlay_info(void)
 		return;
 	}
 
+	LOAD_SYM(reset);
 	LOAD_SYM(compile_dxgi_shaders);
 	//LOAD_SYM(draw_ddraw);
 	LOAD_SYM(draw_d3d8);
@@ -831,6 +832,9 @@ static inline void thread_data_free(void)
 
 void capture_free(void)
 {
+	if (overlay_info.reset)
+		overlay_info.reset();
+
 	thread_data_free();
 
 	if (shmem_info) {

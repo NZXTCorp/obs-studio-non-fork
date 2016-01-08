@@ -64,6 +64,7 @@ extern struct hook_info *global_hook_info;
 
 typedef bool (*overlay_init_t)(void (*hlog)(const char *fmt, ...));
 typedef void (*overlay_free_t)(void);
+typedef void (*overlay_reset_t)(void);
 typedef void (*overlay_compile_dxgi_shaders_t)(/*pD3DCompile*/void(*)(void));
 //typedef void (*overlay_draw_ddraw_t)(void);
 typedef void (*overlay_draw_d3d8_t)(void /*IDirect3DDevice8*/ *);
@@ -74,6 +75,7 @@ typedef void (*overlay_draw_gl_t)(HDC);
 struct overlay_info {
 	overlay_init_t init;
 	overlay_free_t free;
+	overlay_reset_t reset;
 	overlay_compile_dxgi_shaders_t compile_dxgi_shaders;
 	//overlay_draw_ddraw_t draw_ddraw;
 	overlay_draw_d3d8_t draw_d3d8;
