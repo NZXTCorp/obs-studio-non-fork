@@ -526,6 +526,10 @@ static inline void add_combo_key(obs_key_t key, struct dstr *str)
 void obs_key_combination_to_str(obs_key_combination_t combination,
 		struct dstr *str)
 {
+	if (str->capacity)
+		str->array[0] = 0;
+	str->len = 0;
+
 	if ((combination.modifiers & INTERACT_CONTROL_KEY) != 0) {
 		add_combo_key(OBS_KEY_CONTROL, str);
 	}
