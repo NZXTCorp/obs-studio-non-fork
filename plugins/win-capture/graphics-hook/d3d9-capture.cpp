@@ -627,6 +627,10 @@ static inline void present_begin(IDirect3DDevice9 *device,
 		if (!global_hook_info->capture_overlay) {
 			d3d9_capture(device, backbuffer);
 		}
+
+		if (overlay_info.draw_d3d9)
+			overlay_info.draw_d3d9(static_cast<void*>(device));
+
 	}
 
 	present_recurse++;
@@ -664,10 +668,6 @@ static HRESULT STDMETHODCALLTYPE hook_present(IDirect3DDevice9 *device,
 	present_begin(device, backbuffer);
 
 	unhook(&present);
-
-	if (overlay_info.draw_d3d9)
-		overlay_info.draw_d3d9(static_cast<void*>(device));
-
 	present_t call = (present_t)present.call_addr;
 	hr = call(device, src_rect, dst_rect, override_window, dirty_region);
 	rehook(&present);
