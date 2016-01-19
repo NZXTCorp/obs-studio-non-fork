@@ -35,6 +35,7 @@
 #define SETTING_OVERLAY_DLL64    "overlay_dll64"
 #define SETTING_PROCESS_ID       "process_id"
 #define SETTING_THREAD_ID        "thread_id"
+#define SETTING_HWND             "hwnd"
 
 #define TEXT_GAME_CAPTURE        obs_module_text("GameCapture")
 #define TEXT_ANY_FULLSCREEN      obs_module_text("GameCapture.AnyFullscreen")
@@ -74,6 +75,7 @@ struct game_capture_config {
 	char                          *overlay_dll64;
 	DWORD                         process_id;
 	DWORD                         thread_id;
+	HWND                          hwnd;
 };
 
 struct game_capture {
@@ -298,6 +300,7 @@ static inline void get_config(struct game_capture_config *cfg,
 
 	cfg->process_id = (DWORD)obs_data_get_int(settings, SETTING_PROCESS_ID);
 	cfg->thread_id = (DWORD)obs_data_get_int(settings, SETTING_THREAD_ID);
+	cfg->hwnd = (HWND)obs_data_get_int(settings, SETTING_HWND);
 }
 
 static inline int s_cmp(const char *str1, const char *str2)
@@ -360,6 +363,7 @@ static void game_capture_update(void *data, obs_data_t *settings)
 	get_config(&cfg, settings, window);
 	reset_capture = (cfg.thread_id && cfg.thread_id != gc->thread_id)
 		|| (cfg.process_id && cfg.process_id != gc->process_id)
+		|| (cfg.hwnd && cfg.hwnd != gc->window)
 		|| capture_needs_reset(&cfg, &gc->config);
 
 	if (cfg.force_scaling && (cfg.scale_cx == 0 || cfg.scale_cy == 0)) {
@@ -886,6 +890,7 @@ static void try_hook(struct game_capture *gc)
 	if (gc->config.thread_id || gc->config.process_id) {
 		gc->thread_id = gc->config.thread_id;
 		gc->process_id = gc->config.process_id;
+		gc->next_window = gc->config.hwnd;
 
 		if (!init_hook(gc))
 			stop_capture(gc);
@@ -1317,8 +1322,7 @@ static bool start_capture(struct game_capture *gc)
 
 static inline bool capture_valid(struct game_capture *gc)
 {
-	if (!gc->process_id && gc->thread_id &&
-			!gc->dwm_capture && !IsWindow(gc->window))
+	if (!gc->dwm_capture && !IsWindow(gc->window))
 	       return false;
 
 	if (object_signalled(gc->hook_exit))
@@ -1496,6 +1500,7 @@ static void game_capture_defaults(obs_data_t *settings)
 
 	obs_data_set_default_int(settings, SETTING_PROCESS_ID, 0);
 	obs_data_set_default_int(settings, SETTING_THREAD_ID, 0);
+	obs_data_set_default_int(settings, SETTING_HWND, 0);
 }
 
 static bool any_fullscreen_callback(obs_properties_t *ppts,
