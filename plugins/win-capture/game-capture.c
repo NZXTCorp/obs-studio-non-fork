@@ -1322,7 +1322,7 @@ static bool start_capture(struct game_capture *gc)
 
 static inline bool capture_valid(struct game_capture *gc)
 {
-	if (!gc->dwm_capture && !IsWindow(gc->window))
+	if (!gc->dwm_capture && gc->window && !IsWindow(gc->window))
 	       return false;
 
 	if (object_signalled(gc->hook_exit))
