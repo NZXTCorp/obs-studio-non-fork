@@ -244,6 +244,9 @@ static HRESULT STDMETHODCALLTYPE hook_reset(IDirect3DDevice8 *device,
 	if (capture_active())
 		d3d8_free();
 
+	if (overlay_info.reset)
+		overlay_info.reset();
+
 	unhook(&reset);
 	reset_t call = (reset_t)reset.call_addr;
 	hr = call(device, parameters);

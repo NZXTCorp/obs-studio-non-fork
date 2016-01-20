@@ -81,6 +81,9 @@ static HRESULT STDMETHODCALLTYPE hook_resize_buffers(IDXGISwapChain *swap,
 	if (!!data.free)
 		data.free();
 
+	if (overlay_info.reset)
+		overlay_info.reset();
+
 	data.swap = nullptr;
 	data.free = nullptr;
 	data.capture = nullptr;

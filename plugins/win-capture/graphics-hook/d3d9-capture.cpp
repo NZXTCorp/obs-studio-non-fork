@@ -742,6 +742,9 @@ static HRESULT STDMETHODCALLTYPE hook_reset(IDirect3DDevice9 *device,
 	if (capture_active())
 		d3d9_free();
 
+	if (overlay_info.reset)
+		overlay_info.reset();
+
 	unhook(&reset);
 	reset_t call = (reset_t)reset.call_addr;
 	hr = call(device, params);
@@ -757,6 +760,9 @@ static HRESULT STDMETHODCALLTYPE hook_reset_ex(IDirect3DDevice9 *device,
 
 	if (capture_active())
 		d3d9_free();
+
+	if (overlay_info.reset)
+		overlay_info.reset();
 
 	unhook(&reset_ex);
 	reset_ex_t call = (reset_ex_t)reset_ex.call_addr;

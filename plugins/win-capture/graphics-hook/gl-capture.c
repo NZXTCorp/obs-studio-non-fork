@@ -835,6 +835,9 @@ static BOOL WINAPI hook_wgl_delete_context(HGLRC hrc)
 		jimglMakeCurrent(last_hdc, last_hrc);
 	}
 
+	if (overlay_info.reset)
+		overlay_info.reset();
+
 	unhook(&wgl_delete_context);
 	BOOL (WINAPI *call)(HGLRC) = wgl_delete_context.call_addr;
 	ret = call(hrc);
