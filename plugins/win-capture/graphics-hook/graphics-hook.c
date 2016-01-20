@@ -832,9 +832,6 @@ static inline void thread_data_free(void)
 
 void capture_free(void)
 {
-	if (overlay_info.reset)
-		overlay_info.reset();
-
 	thread_data_free();
 
 	if (shmem_info) {
@@ -846,6 +843,9 @@ void capture_free(void)
 
 	SetEvent(signal_restart);
 	active = false;
+
+	if (overlay_info.reset)
+		overlay_info.reset();
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, LPVOID unused1)
