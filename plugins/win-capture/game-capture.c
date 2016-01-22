@@ -84,6 +84,7 @@ struct game_capture {
 	signal_handler_t              *signals;
 	struct calldata               start_calldata;
 	struct calldata               stop_calldata;
+	struct calldata               inject_fail_calldata;
 
 	struct cursor_data            cursor_data;
 	HANDLE                        injector_process;
@@ -246,6 +247,7 @@ static void game_capture_destroy(void *data)
 
 	free_config(&gc->config);
 
+	calldata_free(&gc->inject_fail_calldata);
 	calldata_free(&gc->stop_calldata);
 	calldata_free(&gc->start_calldata);
 
@@ -391,6 +393,7 @@ static void game_capture_update(void *data, obs_data_t *settings)
 static const char *capture_signals[] = {
 	"void start_capture(ptr source, int width, int height)",
 	"void stop_capture(ptr source)",
+	"void inject_failed(ptr source)",
 	NULL
 };
 
@@ -411,6 +414,9 @@ static void *game_capture_create(obs_data_t *settings, obs_source_t *source)
 
 	calldata_init(&gc->stop_calldata);
 	calldata_set_ptr(&gc->stop_calldata, "source", source);
+
+	calldata_init(&gc->inject_fail_calldata);
+	calldata_set_ptr(&gc->inject_fail_calldata, "source", source);
 
 	game_capture_update(gc, settings);
 	return gc;
@@ -765,6 +771,10 @@ static inline bool inject_hook(struct game_capture *gc)
 		info("using helper (%s hook)", gc->config.anticheat_hook ?
 				"compatibility" : "direct");
 		success = create_inject_process(gc, inject_path, hook_dll);
+	}
+
+	if (!success) {
+		signal_handler_signal(gc->signals, "inject_failed", &gc->inject_fail_calldata);
 	}
 
 cleanup:
