@@ -104,7 +104,9 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 		success = !!ReadFile(pipe->handle, read_data + size,
 				(DWORD)(capacity - size), NULL, &pipe->overlap);
 		if (!success && !ipc_pipe_internal_io_pending()) {
-			break;
+			DWORD res = GetLastError();
+			if (res != ERROR_MORE_DATA)
+				break;
 		}
 
 		DWORD wait = WaitForSingleObject(pipe->ready_event, INFINITE);
@@ -116,7 +118,14 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 				&bytes, true);
 		if (!success || !bytes) {
 			DWORD res = GetLastError();
-			break;
+			if (res != ERROR_MORE_DATA)
+				break;
+
+			capacity *= 2;
+			uint8_t *new_data = realloc(read_data, capacity);
+			if (!new_data)
+				break;
+			read_data = new_data;
 		}
 
 		size += bytes;
