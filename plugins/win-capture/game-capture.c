@@ -1364,6 +1364,7 @@ static void game_capture_tick(void *data, float seconds)
 		if (exit_code != 0) {
 			warn("inject process failed: %ld", (long)exit_code);
 			gc->error_acquiring = true;
+			signal_handler_signal(gc->signals, "inject_failed", &gc->inject_fail_calldata);
 
 		} else if (!gc->capturing) {
 			gc->retry_interval = ERROR_RETRY_INTERVAL;
