@@ -76,26 +76,6 @@ static inline bool ipc_pipe_internal_create_pipe(ipc_pipe_server_t *pipe,
 	return pipe->handle != INVALID_HANDLE_VALUE;
 }
 
-static inline void ipc_pipe_internal_ensure_capacity(ipc_pipe_server_t *pipe,
-		size_t new_size)
-{
-	if (pipe->capacity >= new_size) {
-		return;
-	}
-
-	pipe->read_data = realloc(pipe->read_data, new_size);
-	pipe->capacity = new_size;
-}
-
-static inline void ipc_pipe_internal_append_bytes(ipc_pipe_server_t *pipe,
-		uint8_t *bytes, size_t size)
-{
-	size_t new_size = pipe->size + size;
-	ipc_pipe_internal_ensure_capacity(pipe, new_size);
-	memcpy(pipe->read_data + pipe->size, bytes, size);
-	pipe->size = new_size;
-}
-
 static inline bool ipc_pipe_internal_io_pending(void)
 {
 	return GetLastError() == ERROR_IO_PENDING;
@@ -104,14 +84,11 @@ static inline bool ipc_pipe_internal_io_pending(void)
 static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 {
 	ipc_pipe_server_t *pipe = param;
-	uint8_t buf[IPC_PIPE_BUF_SIZE];
-	uint8_t *big_buf = NULL;
 
-	if (pipe->overlapped_size > 0)
-		big_buf = malloc(pipe->overlapped_size);
-
-	uint8_t *rbuf = big_buf ? big_buf : buf;
-	DWORD read_size = big_buf ? pipe->overlapped_size : IPC_PIPE_BUF_SIZE;
+	size_t  size = 0;
+	size_t  capacity = pipe->overlapped_size > 0 ?
+		pipe->overlapped_size : IPC_PIPE_BUF_SIZE;
+	uint8_t *read_data = malloc(capacity);
 
 	/* wait for connection */
 	DWORD wait = WaitForSingleObject(pipe->ready_event, INFINITE);
@@ -124,8 +101,8 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 		DWORD bytes = 0;
 		bool success;
 
-		success = !!ReadFile(pipe->handle, rbuf, read_size, NULL,
-				&pipe->overlap);
+		success = !!ReadFile(pipe->handle, read_data + size,
+				(DWORD)(capacity - size), NULL, &pipe->overlap);
 		if (!success && !ipc_pipe_internal_io_pending()) {
 			break;
 		}
@@ -142,16 +119,15 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 			break;
 		}
 
-		ipc_pipe_internal_append_bytes(pipe, rbuf, (size_t)bytes);
+		size += bytes;
 
 		if (success) {
-			pipe->read_callback(pipe->param, pipe->read_data,
-					pipe->size);
-			pipe->size = 0;
+			pipe->read_callback(pipe->param, read_data, size);
+			size = 0;
 		}
 	}
 
-	free(big_buf);
+	free(read_data);
 	pipe->read_callback(pipe->param, NULL, 0);
 	return 0;
 }
@@ -252,7 +228,6 @@ void ipc_pipe_server_free(ipc_pipe_server_t *pipe)
 	if (pipe->handle)
 		CloseHandle(pipe->handle);
 
-	free(pipe->read_data);
 	memset(pipe, 0, sizeof(*pipe));
 }
 

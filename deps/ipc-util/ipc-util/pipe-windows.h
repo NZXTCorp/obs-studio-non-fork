@@ -24,10 +24,6 @@ struct ipc_pipe_server {
 	HANDLE                     ready_event;
 	HANDLE                     thread;
 
-	uint8_t                    *read_data;
-	size_t                     size;
-	size_t                     capacity;
-
 	ipc_pipe_read_t            read_callback;
 	void                       *param;
 
