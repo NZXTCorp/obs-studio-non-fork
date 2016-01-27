@@ -16,6 +16,8 @@
 
 #include "pipe.h"
 
+#include <sddl.h>
+
 #define IPC_PIPE_BUF_SIZE 1024
 
 static inline bool ipc_pipe_internal_create_events(ipc_pipe_server_t *pipe)
@@ -26,24 +28,12 @@ static inline bool ipc_pipe_internal_create_events(ipc_pipe_server_t *pipe)
 
 static inline void *create_full_access_security_descriptor()
 {
-	void *sd = malloc(SECURITY_DESCRIPTOR_MIN_LENGTH);
-	if (!sd) {
+	void *sd = NULL;
+	if (!ConvertStringSecurityDescriptorToSecurityDescriptorA(
+		"D:(A;OICI;GA;;;AU)S:(ML;;;;;LW)", SDDL_REVISION_1, &sd, NULL))
 		return NULL;
-	}
-
-	if (!InitializeSecurityDescriptor(sd, SECURITY_DESCRIPTOR_REVISION)) {
-		goto error;
-	}
-
-	if (!SetSecurityDescriptorDacl(sd, true, NULL, false)) {
-		goto error;
-	}
 
 	return sd;
-
-error:
-	free(sd);
-	return NULL;
 }
 
 static inline bool ipc_pipe_internal_create_pipe(ipc_pipe_server_t *pipe,
@@ -71,8 +61,8 @@ static inline bool ipc_pipe_internal_create_pipe(ipc_pipe_server_t *pipe,
 
 	pipe->handle = CreateNamedPipeA(new_name, access, flags, 1,
 			IPC_PIPE_BUF_SIZE, IPC_PIPE_BUF_SIZE, 0, &sa);
-	free(sd);
-
+	LocalFree(sd);
+	
 	return pipe->handle != INVALID_HANDLE_VALUE;
 }
 
