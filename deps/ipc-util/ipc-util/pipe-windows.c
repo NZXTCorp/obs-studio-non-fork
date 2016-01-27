@@ -156,7 +156,8 @@ static inline bool ipc_pipe_internal_wait_for_connection(
 
 	pipe->overlap.hEvent = pipe->ready_event;
 	success = !!ConnectNamedPipe(pipe->handle, &pipe->overlap);
-	return success || (!success && ipc_pipe_internal_io_pending());
+	return success || (!success && ipc_pipe_internal_io_pending())
+		           || (!success && GetLastError() == ERROR_PIPE_CONNECTED);
 }
 
 static inline bool ipc_pipe_internal_open_pipe(ipc_pipe_client_t *pipe,
