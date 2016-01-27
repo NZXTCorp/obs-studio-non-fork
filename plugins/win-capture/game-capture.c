@@ -31,6 +31,7 @@
 #define SETTING_LIMIT_FRAMERATE  "limit_framerate"
 #define SETTING_CAPTURE_OVERLAYS "capture_overlays"
 #define SETTING_ANTI_CHEAT_HOOK  "anti_cheat_hook"
+#define SETTING_ALLOW_IPC_INJ    "allow_ipc_injector"
 #define SETTING_OVERLAY_DLL      "overlay_dll"
 #define SETTING_OVERLAY_DLL64    "overlay_dll64"
 #define SETTING_PROCESS_ID       "process_id"
@@ -71,6 +72,7 @@ struct game_capture_config {
 	bool                          limit_framerate : 1;
 	bool                          capture_overlays : 1;
 	bool                          anticheat_hook : 1;
+	bool                          allow_ipc_injector : 1;
 	char                          *overlay_dll;
 	char                          *overlay_dll64;
 	DWORD                         process_id;
@@ -85,6 +87,7 @@ struct game_capture {
 	struct calldata               start_calldata;
 	struct calldata               stop_calldata;
 	struct calldata               inject_fail_calldata;
+	struct calldata               ipc_inject_calldata;
 
 	struct cursor_data            cursor_data;
 	HANDLE                        injector_process;
@@ -103,10 +106,15 @@ struct game_capture {
 	bool                          capturing : 1;
 	bool                          activate_hook : 1;
 	bool                          process_is_64bit : 1;
+	bool                          ipc_injector_active : 1;
 	bool                          error_acquiring : 1;
 	bool                          dwm_capture : 1;
 	bool                          initial_config : 1;
 	bool                          convert_16bit : 1;
+
+	CRITICAL_SECTION              ipc_mutex;
+	DWORD                         ipc_result;
+	bool                          have_ipc_result : 1;
 
 	struct game_capture_config    config;
 
@@ -247,6 +255,9 @@ static void game_capture_destroy(void *data)
 
 	free_config(&gc->config);
 
+	DeleteCriticalSection(&gc->ipc_mutex);
+
+	calldata_free(&gc->ipc_inject_calldata);
 	calldata_free(&gc->inject_fail_calldata);
 	calldata_free(&gc->stop_calldata);
 	calldata_free(&gc->start_calldata);
@@ -280,6 +291,8 @@ static inline void get_config(struct game_capture_config *cfg,
 			SETTING_CAPTURE_OVERLAYS);
 	cfg->anticheat_hook = obs_data_get_bool(settings,
 			SETTING_ANTI_CHEAT_HOOK);
+	cfg->allow_ipc_injector = obs_data_get_bool(settings,
+			SETTING_ALLOW_IPC_INJ);
 
 	scale_str = obs_data_get_string(settings, SETTING_SCALE_RES);
 	ret = sscanf(scale_str, "%"PRIu32"x%"PRIu32,
@@ -380,6 +393,8 @@ static void game_capture_update(void *data, obs_data_t *settings)
 	gc->activate_hook = cfg.process_id || cfg.thread_id ||
 		(!!window && !!*window);
 	gc->retry_interval = DEFAULT_RETRY_INTERVAL;
+	gc->have_ipc_result = false;
+	gc->ipc_injector_active = false;
 
 	if (!gc->initial_config) {
 		if (reset_capture) {
@@ -390,10 +405,33 @@ static void game_capture_update(void *data, obs_data_t *settings)
 	}
 }
 
+static void update_ipc_injector_calldata(struct game_capture *gc,
+	bool process_is_64bit, bool anti_cheat, DWORD process_thread_id)
+{
+	calldata_set_bool(&gc->ipc_inject_calldata, "process_is_64bit",
+		process_is_64bit);
+	calldata_set_bool(&gc->ipc_inject_calldata, "anti_cheat", anti_cheat);
+	calldata_set_int(&gc->ipc_inject_calldata, "process_thread_id",
+		process_thread_id);
+}
+
+void injector_result(void *context, calldata_t *data)
+{
+	struct game_capture *gc = context;
+	DWORD code = (DWORD)calldata_int(data, "code");
+
+	EnterCriticalSection(&gc->ipc_mutex);
+	gc->have_ipc_result = true;
+	gc->ipc_result = code;
+	LeaveCriticalSection(&gc->ipc_mutex);
+}
+
 static const char *capture_signals[] = {
 	"void start_capture(ptr source, int width, int height)",
 	"void stop_capture(ptr source)",
 	"void inject_failed(ptr source)",
+	"void inject_request(ptr source, bool process_is_64bit, "
+	                    "bool anti_cheat, int process_thread_id)",
 	NULL
 };
 
@@ -417,6 +455,16 @@ static void *game_capture_create(obs_data_t *settings, obs_source_t *source)
 
 	calldata_init(&gc->inject_fail_calldata);
 	calldata_set_ptr(&gc->inject_fail_calldata, "source", source);
+
+	calldata_init(&gc->ipc_inject_calldata);
+	calldata_set_ptr(&gc->ipc_inject_calldata, "source", source);
+	update_ipc_injector_calldata(gc, false, false, 0);
+
+	InitializeCriticalSection(&gc->ipc_mutex);
+
+	proc_handler_t *proc = obs_source_get_proc_handler(source);
+	proc_handler_add(proc, "void injector_result(int code)",
+			injector_result, gc);
 
 	game_capture_update(gc, settings);
 	return gc;
@@ -740,6 +788,26 @@ static inline bool inject_hook(struct game_capture *gc)
 	const char *hook_dll;
 	char *inject_path;
 	char *hook_path;
+
+	if (gc->config.allow_ipc_injector) {
+		bool anti_cheat = gc->config.anticheat_hook;
+
+		if (anti_cheat && !gc->thread_id) {
+			warn("Anti cheat was enabled with no thread id "
+				"set, trying without anti cheat");
+			anti_cheat = false;
+		}
+
+		update_ipc_injector_calldata(gc, gc->process_is_64bit,
+				anti_cheat,
+				anti_cheat ? gc->thread_id : gc->process_id);
+
+		signal_handler_signal(gc->signals, "inject_request",
+				&gc->ipc_inject_calldata);
+
+		gc->ipc_injector_active = true;
+		return true;
+	}
 
 	if (gc->process_is_64bit) {
 		hook_dll = "graphics-hook64.dll";
@@ -1372,6 +1440,29 @@ static void game_capture_tick(void *data, float seconds)
 		}
 	}
 
+	if (gc->config.allow_ipc_injector && gc->ipc_injector_active) {
+		bool code_valid = false;
+		DWORD code = 0;
+
+		EnterCriticalSection(&gc->ipc_mutex);
+		if (gc->have_ipc_result)
+			code = gc->ipc_result;
+		LeaveCriticalSection(&gc->ipc_mutex);
+
+		if (code_valid)
+			gc->ipc_injector_active = false;
+
+		if (code_valid && code != 0) {
+			warn("ipc inject process failed: %ld", (long)code);
+			gc->error_acquiring = true;
+			signal_handler_signal(gc->signals, "inject_failed", &gc->inject_fail_calldata);
+
+		} else if (code_valid && !gc->capturing) {
+			gc->retry_interval = ERROR_RETRY_INTERVAL;
+			stop_capture(gc);
+		}
+	}
+
 	if (gc->hook_ready && object_signalled(gc->hook_ready)) {
 		enum capture_result result = init_capture_data(gc);
 
@@ -1508,6 +1599,8 @@ static void game_capture_defaults(obs_data_t *settings)
 	obs_data_set_default_bool(settings, SETTING_ANTI_CHEAT_HOOK, false);
 
 	obs_data_set_default_string(settings, SETTING_OVERLAY_DLL, NULL);
+
+	obs_data_set_default_bool(settings, SETTING_ALLOW_IPC_INJ, false);
 
 	obs_data_set_default_int(settings, SETTING_PROCESS_ID, 0);
 	obs_data_set_default_int(settings, SETTING_THREAD_ID, 0);
