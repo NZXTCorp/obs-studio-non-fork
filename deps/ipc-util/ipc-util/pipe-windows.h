@@ -38,7 +38,7 @@ struct ipc_pipe_client {
 static inline bool ipc_pipe_client_valid(ipc_pipe_client_t *pipe)
 {
 	return pipe->handle != NULL && pipe->handle != INVALID_HANDLE_VALUE &&
-		pipe->server_process != NULL &&
-		pipe->server_process != INVALID_HANDLE_VALUE &&
-		WaitForSingleObject(pipe->server_process, 0) == WAIT_TIMEOUT;
+		(pipe->server_process == NULL ||
+		(pipe->server_process != INVALID_HANDLE_VALUE &&
+		WaitForSingleObject(pipe->server_process, 0) == WAIT_TIMEOUT));
 }
