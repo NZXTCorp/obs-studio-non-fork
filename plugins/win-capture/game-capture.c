@@ -88,6 +88,7 @@ struct game_capture {
 	struct calldata               stop_calldata;
 	struct calldata               inject_fail_calldata;
 	struct calldata               ipc_inject_calldata;
+	struct calldata               ipc_monitor_process_calldata;
 
 	struct cursor_data            cursor_data;
 	HANDLE                        injector_process;
@@ -115,6 +116,7 @@ struct game_capture {
 	CRITICAL_SECTION              ipc_mutex;
 	DWORD                         ipc_result;
 	bool                          have_ipc_result : 1;
+	bool                          monitored_process_died : 1;
 
 	struct game_capture_config    config;
 
@@ -426,12 +428,24 @@ void injector_result(void *context, calldata_t *data)
 	LeaveCriticalSection(&gc->ipc_mutex);
 }
 
+void monitored_process_exit(void *context, calldata_t *data)
+{
+	struct game_capture *gc = context;
+	DWORD process_id = (DWORD)calldata_int(data, "process_id");
+
+	EnterCriticalSection(&gc->ipc_mutex);
+	if (gc->process_id == process_id)
+		gc->monitored_process_died = true;
+	LeaveCriticalSection(&gc->ipc_mutex);
+}
+
 static const char *capture_signals[] = {
 	"void start_capture(ptr source, int width, int height)",
 	"void stop_capture(ptr source)",
 	"void inject_failed(ptr source)",
 	"void inject_request(ptr source, bool process_is_64bit, "
 	                    "bool anti_cheat, int process_thread_id)",
+	"void monitor_process(ptr source, int process_id)",
 	NULL
 };
 
@@ -460,11 +474,19 @@ static void *game_capture_create(obs_data_t *settings, obs_source_t *source)
 	calldata_set_ptr(&gc->ipc_inject_calldata, "source", source);
 	update_ipc_injector_calldata(gc, false, false, 0);
 
+	calldata_init(&gc->ipc_monitor_process_calldata);
+	calldata_set_int(&gc->ipc_monitor_process_calldata, "process_id", 0);
+	calldata_set_ptr(&gc->ipc_monitor_process_calldata, "source", source);
+
 	InitializeCriticalSection(&gc->ipc_mutex);
 
 	proc_handler_t *proc = obs_source_get_proc_handler(source);
 	proc_handler_add(proc, "void injector_result(int code)",
 			injector_result, gc);
+
+	proc_handler_add(proc, "void monitored_process_exit(int process_id, "
+			                                           "int code)",
+			monitored_process_exit, gc);
 
 	game_capture_update(gc, settings);
 	return gc;
@@ -554,8 +576,20 @@ static inline bool open_target_process(struct game_capture *gc)
 			PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | SYNCHRONIZE,
 			false, gc->process_id);
 	if (!gc->target_process) {
-		warn("could not open process: %s", gc->config.executable);
-		return false;
+		if (!gc->config.allow_ipc_injector) {
+			warn("could not open process: %s", gc->config.executable);
+			return false;
+		}
+
+		info("process '%ld' inaccessible, using helper", (long)gc->process_id);
+
+		calldata_set_int(&gc->ipc_monitor_process_calldata,
+				"process_id", gc->process_id);
+		signal_handler_signal(gc->signals, "monitor_process",
+				&gc->ipc_monitor_process_calldata);
+
+		gc->process_is_64bit = false;
+		return true;
 	}
 
 	gc->process_is_64bit = is_64bit_process(gc->target_process);
@@ -1398,6 +1432,20 @@ static bool start_capture(struct game_capture *gc)
 	return true;
 }
 
+static inline bool target_process_died(struct game_capture *gc)
+{
+	if (gc->target_process || !gc->config.allow_ipc_injector)
+		return object_signalled(gc->target_process);
+
+	bool res = false;
+
+	EnterCriticalSection(&gc->ipc_mutex);
+	res = gc->monitored_process_died;
+	LeaveCriticalSection(&gc->ipc_mutex);
+
+	return res;
+}
+
 static inline bool capture_valid(struct game_capture *gc)
 {
 	if (!gc->dwm_capture && gc->window && !IsWindow(gc->window))
@@ -1406,7 +1454,7 @@ static inline bool capture_valid(struct game_capture *gc)
 	if (object_signalled(gc->hook_exit))
 		return false;
 
-	return !object_signalled(gc->target_process);
+	return !target_process_died(gc);
 }
 
 static void game_capture_tick(void *data, float seconds)
@@ -1414,7 +1462,7 @@ static void game_capture_tick(void *data, float seconds)
 	struct game_capture *gc = data;
 
 	if ((gc->hook_stop && object_signalled(gc->hook_stop)) ||
-		(gc->target_process && object_signalled(gc->target_process))) {
+		target_process_died(gc)) {
 		stop_capture(gc);
 	}
 
