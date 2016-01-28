@@ -581,15 +581,21 @@ static inline bool open_target_process(struct game_capture *gc)
 			return false;
 		}
 
-		info("process '%ld' inaccessible, using helper", (long)gc->process_id);
+		info("process '%ld' inaccessible for direct hook", (long)gc->process_id);
 
-		calldata_set_int(&gc->ipc_monitor_process_calldata,
+		gc->target_process = open_process(SYNCHRONIZE, false, gc->process_id);
+		
+		if (!gc->target_process) {
+			info("process '%ld' inaccessible, using helper", (long)gc->process_id);
+
+			calldata_set_int(&gc->ipc_monitor_process_calldata,
 				"process_id", gc->process_id);
-		signal_handler_signal(gc->signals, "monitor_process",
+			signal_handler_signal(gc->signals, "monitor_process",
 				&gc->ipc_monitor_process_calldata);
 
-		gc->process_is_64bit = false;
-		return true;
+			gc->process_is_64bit = false;
+			return true;
+		}
 	}
 
 	gc->process_is_64bit = is_64bit_process(gc->target_process);
