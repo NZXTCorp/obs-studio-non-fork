@@ -78,10 +78,11 @@ static bool write_packet(struct ffmpeg_muxer *stream, os_process_pipe_t *pipe,
 namespace {
 
 struct packets_segment {
-	using offset_t = std::vector<uint8_t>::size_type;
+	using data_t = std::vector<uint8_t>;
+	using offset_t = data_t::size_type;
 	vector<encoder_packet> pkts;
 	vector<offset_t>       offsets;
-	vector<uint8_t>        data;
+	data_t                 data;
 	bool                   finalized = false;
 
 	int64_t                first_pts;
@@ -136,6 +137,9 @@ struct ffmpeg_muxer {
 	bool              capturing = false;
 
 	signal_handler_t  *signal;
+
+	mutex             buffers_mutex;
+	vector<packets_segment::data_t> buffers;
 
 	mutex             buffer_mutex;
 
@@ -719,6 +723,47 @@ static void prune_old_segments(ffmpeg_muxer *stream)
 	stream->payload_data.pop_front();
 }
 
+template <typename T, typename D, typename ... Ts>
+static shared_ptr<T> make_shared_deleter(D &&d, Ts &&... ts)
+{
+	return {new T{forward<Ts>(ts)...}, forward<D>(d)};
+}
+
+static void push_buffer(ffmpeg_muxer *stream, packets_segment::data_t &&data)
+{
+	if (!data.capacity())
+		return;
+
+	data.clear();
+
+	LOCK(stream->buffers_mutex);
+	stream->buffers.emplace_back(data);
+}
+
+static packets_segment::data_t pop_buffer(ffmpeg_muxer *stream)
+{
+	LOCK(stream->buffers_mutex);
+	if (stream->buffers.empty())
+		return {};
+
+	auto buffer = move(stream->buffers.back());
+	stream->buffers.pop_back();
+
+	return buffer;
+}
+
+static shared_ptr<packets_segment> create_segment(ffmpeg_muxer *stream)
+{
+	auto seg = make_shared_deleter<packets_segment>([&, stream](packets_segment *seg)
+	{
+		push_buffer(stream, move(seg->data));
+	});
+
+	seg->data = pop_buffer(stream);
+
+	return seg;
+}
+
 static void ffmpeg_mux_data(void *data, struct encoder_packet *packet)
 {
 	auto stream = static_cast<ffmpeg_muxer*>(data);
@@ -735,7 +780,7 @@ static void ffmpeg_mux_data(void *data, struct encoder_packet *packet)
 	}
 
 	if (!stream->current_segment)
-		stream->current_segment = make_shared<packets_segment>();
+		stream->current_segment = create_segment(stream);
 
 	if (packet->keyframe) {
 		prune_old_segments(stream);
@@ -744,7 +789,7 @@ static void ffmpeg_mux_data(void *data, struct encoder_packet *packet)
 			output->AppendSegment(stream->current_segment);
 
 		stream->payload_data.emplace_back(move(stream->current_segment));
-		stream->current_segment = make_shared<packets_segment>();
+		stream->current_segment = create_segment(stream);
 	}
 
 	stream->current_segment->AddPacket(*packet);
