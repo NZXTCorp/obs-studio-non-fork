@@ -64,12 +64,18 @@ struct default_delete<os_process_pipe_t> {
 
 #define LOCK(x) lock_guard<decltype(x)> lock ## __LINE__{x}
 
+namespace {
+
 struct ffmpeg_muxer;
+
+}
 
 static void build_command_line(struct ffmpeg_muxer *stream, const dstr *path,
 		struct dstr *cmd);
 static bool write_packet(struct ffmpeg_muxer *stream, os_process_pipe_t *pipe,
 		struct encoder_packet *packet);
+
+namespace {
 
 struct packets_segment {
 	using offset_t = std::vector<uint8_t>::size_type;
@@ -347,6 +353,8 @@ private:
 		thread_finished = true;
 	}
 };
+
+}
 
 static const char *ffmpeg_mux_getname(void *unused)
 {
