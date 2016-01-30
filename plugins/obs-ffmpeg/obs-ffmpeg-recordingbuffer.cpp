@@ -155,7 +155,7 @@ struct buffer_output {
 	int64_t           end_dts;
 	bool              wait_for_dts = false;
 
-	packets_segment   headers;
+	packets_segment   &headers;
 	vector<shared_ptr<packets_segment>> initial_segments;
 	vector<shared_ptr<packets_segment>> new_segments;
 	packets_segment   final_segment;
@@ -172,7 +172,8 @@ struct buffer_output {
 	buffer_output(ffmpeg_muxer *stream, const char *path_,
 			video_tracked_frame_id tracked_id=0)
 		: stream(stream),
-		  tracked_id(tracked_id)
+		  tracked_id(tracked_id),
+		  headers(stream->encoder_headers)
 	{
 		dstr_copy(path, path_);
 
@@ -190,8 +191,6 @@ struct buffer_output {
 		}
 
 		finish_output = !tracked_id;
-
-		headers = stream->encoder_headers;
 
 		initial_segments.assign(begin(stream->payload_data),
 			end(stream->payload_data));
