@@ -64,6 +64,13 @@ struct default_delete<os_process_pipe_t> {
 
 #define LOCK(x) lock_guard<decltype(x)> lock ## __LINE__{x}
 
+struct ffmpeg_muxer;
+
+static void build_command_line(struct ffmpeg_muxer *stream, const dstr *path,
+		struct dstr *cmd);
+static bool write_packet(struct ffmpeg_muxer *stream, os_process_pipe_t *pipe,
+		struct encoder_packet *packet);
+
 struct packets_segment {
 	using offset_t = std::vector<uint8_t>::size_type;
 	vector<encoder_packet> pkts;
@@ -114,11 +121,6 @@ struct packets_segment {
 	}
 };
 
-double Interval(const packets_segment &oldest, const packets_segment &youngest)
-{
-	return double(youngest.last_pts - oldest.first_pts) / youngest.timebase_den;
-}
-
 struct buffer_output;
 
 struct ffmpeg_muxer {
@@ -138,11 +140,6 @@ struct ffmpeg_muxer {
 	vector<unique_ptr<buffer_output>> outputs;
 	vector<unique_ptr<buffer_output>> complete_outputs;
 };
-
-static void build_command_line(struct ffmpeg_muxer *stream, const dstr *path,
-		struct dstr *cmd);
-static bool write_packet(struct ffmpeg_muxer *stream, os_process_pipe_t *pipe,
-		struct encoder_packet *packet);
 
 struct buffer_output {
 	ffmpeg_muxer      *stream;
@@ -698,12 +695,17 @@ static void gather_headers(struct ffmpeg_muxer *stream)
 	return true;
 }*/
 
+static double interval(const packets_segment &oldest, const packets_segment &youngest)
+{
+	return double(youngest.last_pts - oldest.first_pts) / youngest.timebase_den;
+}
+
 static void prune_old_segments(ffmpeg_muxer *stream)
 {
 	if (stream->payload_data.empty())
 		return;
 
-	if (Interval(*stream->payload_data.front(), *stream->current_segment)
+	if (interval(*stream->payload_data.front(), *stream->current_segment)
 			- stream->current_segment->Length() < 60.) //TODO: don't hardcode this
 		return;
 
