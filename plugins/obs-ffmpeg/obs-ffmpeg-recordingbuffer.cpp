@@ -739,7 +739,7 @@ static void push_buffer(ffmpeg_muxer *stream, packets_segment::data_t &&data)
 	data.clear();
 
 	LOCK(stream->buffers_mutex);
-	stream->buffers.emplace_back(data);
+	stream->buffers.emplace_back(move(data));
 }
 
 static packets_segment::data_t pop_buffer(ffmpeg_muxer *stream)
