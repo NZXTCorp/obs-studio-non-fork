@@ -757,6 +757,7 @@ static shared_ptr<packets_segment> create_segment(ffmpeg_muxer *stream)
 	auto seg = make_shared_deleter<packets_segment>([&, stream](packets_segment *seg)
 	{
 		push_buffer(stream, move(seg->data));
+		delete seg;
 	});
 
 	seg->data = pop_buffer(stream);
