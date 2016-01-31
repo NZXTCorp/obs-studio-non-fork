@@ -85,9 +85,9 @@ struct packets_segment {
 	data_t                 data;
 	bool                   finalized = false;
 
-	int64_t                first_pts;
-	int64_t                last_pts;
-	int32_t                timebase_den;
+	int64_t                keyframe_pts;
+	double                 first_pts;
+	double                 last_pts;
 	bool                   have_pts = false;
 
 	void AddPacket(const encoder_packet &pkt)
@@ -99,16 +99,18 @@ struct packets_segment {
 		offsets.push_back(data.size());
 		data.insert(end(data), pkt.data, pkt.data + pkt.size);
 
+		auto pkt_pts = static_cast<double>(pkt.pts) * pkt.timebase_num / pkt.timebase_den;
+
 		if (!have_pts) {
 			have_pts = true;
-			first_pts = pkt.pts;
-			last_pts = pkt.pts;
-			timebase_den = pkt.timebase_den;
+			keyframe_pts = pkt.pts;
+			first_pts = pkt_pts;
+			last_pts = pkt_pts;
 			return;
 		}
 
-		first_pts = min(first_pts, pkt.pts);
-		last_pts = max(last_pts, pkt.pts);
+		first_pts = min(first_pts, pkt_pts);
+		last_pts = max(last_pts, pkt_pts);
 	}
 
 	void Finalize()
@@ -124,7 +126,7 @@ struct packets_segment {
 
 	double Length() const
 	{
-		return double(last_pts - first_pts) / timebase_den;
+		return last_pts - first_pts;
 	}
 };
 
@@ -332,10 +334,10 @@ private:
 	int64_t GetStartPTS()
 	{
 		if (initial_segments.size())
-			return initial_segments.front()->first_pts;
+			return initial_segments.front()->keyframe_pts;
 		if (new_segments.size())
-			return new_segments.front()->first_pts;
-		return final_segment.first_pts;
+			return new_segments.front()->keyframe_pts;
+		return final_segment.keyframe_pts;
 	}
 
 	void OutputThread()
@@ -708,7 +710,7 @@ static void gather_headers(struct ffmpeg_muxer *stream)
 
 static double interval(const packets_segment &oldest, const packets_segment &youngest)
 {
-	return double(youngest.last_pts - oldest.first_pts) / youngest.timebase_den;
+	return youngest.last_pts - oldest.first_pts;
 }
 
 static void prune_old_segments(ffmpeg_muxer *stream)
