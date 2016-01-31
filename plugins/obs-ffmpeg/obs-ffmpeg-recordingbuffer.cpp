@@ -789,7 +789,9 @@ static void ffmpeg_mux_data(void *data, struct encoder_packet *packet)
 		for (auto &output : stream->outputs)
 			output->AppendSegment(stream->current_segment);
 
-		stream->payload_data.emplace_back(move(stream->current_segment));
+		if (!stream->current_segment->pkts.empty())
+			stream->payload_data.emplace_back(move(stream->current_segment));
+
 		stream->current_segment = create_segment(stream);
 	}
 
