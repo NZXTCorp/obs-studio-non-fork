@@ -22,6 +22,7 @@ struct ipc_pipe_server {
 	OVERLAPPED                 overlap;
 	HANDLE                     handle;
 	HANDLE                     ready_event;
+	HANDLE                     stop_event;
 	HANDLE                     thread;
 
 	ipc_pipe_read_t            read_callback;

@@ -23,7 +23,8 @@
 static inline bool ipc_pipe_internal_create_events(ipc_pipe_server_t *pipe)
 {
 	pipe->ready_event = CreateEvent(NULL, false, false, NULL);
-	return !!pipe->ready_event;
+	pipe->stop_event = CreateEvent(NULL, true, false, NULL);
+	return !!pipe->ready_event && !!pipe->stop_event;
 }
 
 static inline void *create_full_access_security_descriptor()
@@ -87,6 +88,8 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 		return 0;
 	}
 
+	HANDLE events[] = { pipe->ready_event, pipe->stop_event };
+
 	for (;;) {
 		DWORD bytes = 0;
 		bool success;
@@ -99,7 +102,8 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 				break;
 		}
 
-		DWORD wait = WaitForSingleObject(pipe->ready_event, INFINITE);
+
+		DWORD wait = WaitForMultipleObjects(2, events, false, INFINITE);
 		if (wait != WAIT_OBJECT_0) {
 			break;
 		}
@@ -218,11 +222,14 @@ void ipc_pipe_server_free(ipc_pipe_server_t *pipe)
 		return;
 
 	if (pipe->thread) {
+		SetEvent(pipe->stop_event);
 		CancelIoEx(pipe->handle, &pipe->overlap);
 		SetEvent(pipe->ready_event);
 		WaitForSingleObject(pipe->thread, INFINITE);
 		CloseHandle(pipe->thread);
 	}
+	if (pipe->stop_event)
+		CloseHandle(pipe->stop_event);
 	if (pipe->ready_event)
 		CloseHandle(pipe->ready_event);
 	if (pipe->handle)
