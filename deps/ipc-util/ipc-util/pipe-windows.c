@@ -108,6 +108,10 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 			break;
 		}
 
+		if (WaitForSingleObject(pipe->stop_event, 0) == WAIT_OBJECT_0) {
+			break;
+		}
+
 		success = !!GetOverlappedResult(pipe->handle, &pipe->overlap,
 				&bytes, true);
 		if (!success || !bytes) {
@@ -224,7 +228,6 @@ void ipc_pipe_server_free(ipc_pipe_server_t *pipe)
 	if (pipe->thread) {
 		SetEvent(pipe->stop_event);
 		CancelIoEx(pipe->handle, &pipe->overlap);
-		SetEvent(pipe->ready_event);
 		WaitForSingleObject(pipe->thread, INFINITE);
 		CloseHandle(pipe->thread);
 	}
