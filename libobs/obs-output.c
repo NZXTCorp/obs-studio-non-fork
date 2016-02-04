@@ -15,6 +15,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
 
+#include <float.h>
 #include <inttypes.h>
 #include "util/platform.h"
 #include "obs.h"
@@ -584,6 +585,14 @@ int obs_output_get_total_frames(const obs_output_t *output)
 		output->total_frames : 0;
 }
 
+double obs_output_get_output_duration(const obs_output_t *output)
+{
+	if (!obs_output_valid(output, "obs_output_get_output_duration") ||
+		output->start_ts > output->stop_ts)
+		return 0;
+	return output->stop_ts - output->start_ts;
+}
+
 void obs_output_set_preferred_size(obs_output_t *output, uint32_t width,
 		uint32_t height)
 {
@@ -847,6 +856,18 @@ static inline bool has_higher_opposing_ts(struct obs_output *output,
 		return output->highest_video_ts > packet->dts_usec;
 }
 
+static void update_timestamps(obs_output_t *output,
+		struct encoder_packet *packet)
+{
+	double ts = (double)packet->pts * packet->timebase_num /
+		packet->timebase_den;
+
+	if (output->start_ts > ts)
+		output->start_ts = ts;
+	if (output->stop_ts < ts)
+		output->stop_ts = ts;
+}
+
 static inline void send_interleaved(struct obs_output *output)
 {
 	struct encoder_packet out = output->interleaved_packets.array[0];
@@ -863,6 +884,8 @@ static inline void send_interleaved(struct obs_output *output)
 	da_erase(output->interleaved_packets, 0);
 	if (!output->stopped) {
 		output->info.encoded_packet(output->context.data, &out);
+
+		update_timestamps(output, &out);
 
 		if (out.tracked_id) {
 			struct calldata params = {0};
@@ -1075,8 +1098,11 @@ static void default_encoded_callback(void *param, struct encoder_packet *packet)
 	if (packet->type == OBS_ENCODER_AUDIO)
 		packet->track_idx = get_track_index(output, packet);
 
-	if (!output->stopped)
+	if (!output->stopped) {
 		output->info.encoded_packet(output->context.data, packet);
+
+		update_timestamps(output, packet);
+	}
 	if (output->active_delay_ns)
 		obs_free_encoder_packet(packet);
 
@@ -1120,6 +1146,8 @@ static void reset_packet_data(obs_output_t *output)
 	output->highest_audio_ts = 0;
 	output->highest_video_ts = 0;
 	output->video_offset     = 0;
+	output->start_ts         = DBL_MAX;
+	output->stop_ts          = DBL_MIN;
 
 	for (size_t i = 0; i < MAX_AUDIO_MIXES; i++)
 		output->audio_offsets[0] = 0;

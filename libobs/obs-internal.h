@@ -637,6 +637,8 @@ struct obs_output {
 	uint32_t                        starting_skipped_frame_count;
 
 	int                             total_frames;
+	double                          start_ts;
+	double                          stop_ts;
 
 	bool                            active;
 	volatile bool                   stopped;

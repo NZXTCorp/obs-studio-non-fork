@@ -1281,6 +1281,7 @@ EXPORT void obs_output_set_reconnect_settings(obs_output_t *output,
 EXPORT uint64_t obs_output_get_total_bytes(const obs_output_t *output);
 EXPORT int obs_output_get_frames_dropped(const obs_output_t *output);
 EXPORT int obs_output_get_total_frames(const obs_output_t *output);
+EXPORT double obs_output_get_output_duration(const obs_output_t *output);
 
 /**
  * Sets the preferred scaled resolution for this output.  Set width and height
