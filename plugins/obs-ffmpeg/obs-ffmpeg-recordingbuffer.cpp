@@ -27,6 +27,7 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -268,10 +269,39 @@ struct buffer_output {
 	}
 
 private:
-	bool OutputPackets(packets_segment &seg)
+	using stream_id_t = std::pair<obs_encoder_type, decltype(encoder_packet::track_idx)>;
+	using first_stream_packet_t = std::map<stream_id_t, encoder_packet>;
+
+	void RebaseTimestamp(encoder_packet &pkt,
+			first_stream_packet_t *first_packets=nullptr)
+	{
+		if (!first_packets)
+			return;
+
+		// This can potentially introduce a minor desync
+		// but then libobs behaves similarly, so the
+		// desync shouldn't be noticable
+
+		auto id = make_pair(pkt.type, pkt.track_idx);
+		auto idx = first_packets->find(id);
+
+		if (idx == end(*first_packets))
+			idx = first_packets->emplace(id, pkt).first;
+
+		if (idx == end(*first_packets))
+			return;
+
+		pkt.dts -= idx->second.dts;
+		pkt.pts -= idx->second.pts;
+	}
+
+	bool OutputPackets(packets_segment &seg,
+			first_stream_packet_t *first_packets=nullptr)
 	{
 		seg.Finalize();
-		for (auto &pkt : seg.pkts) {
+		for (auto pkt : seg.pkts) {
+			RebaseTimestamp(pkt, first_packets);
+				
 			if (!write_packet(stream, pipe.get(), &pkt))
 				return false;
 
@@ -282,10 +312,11 @@ private:
 		return true;
 	}
 
-	bool OutputSegments(const vector<shared_ptr<packets_segment>> &segments)
+	bool OutputSegments(const vector<shared_ptr<packets_segment>> &segments,
+			first_stream_packet_t *first_packets=nullptr)
 	{
 		for (auto &seg : segments)
-			if (!OutputPackets(*seg))
+			if (!OutputPackets(*seg, first_packets))
 				return false;
 
 		return true;
@@ -293,6 +324,8 @@ private:
 
 	bool WriteOutput()
 	{
+		first_stream_packet_t first_packets;
+
 		for (auto &pkt : headers.pkts) {
 			if (!write_packet(stream, pipe.get(), &pkt)) {
 				warn("Failed to write headers");
@@ -300,7 +333,7 @@ private:
 			}
 		}
 
-		if (!OutputSegments(initial_segments)) {
+		if (!OutputSegments(initial_segments, &first_packets)) {
 			warn("Failed to write initial segments");
 			finish_output = false;
 			return false;
@@ -317,13 +350,13 @@ private:
 				return false;
 		}
 		
-		if (!OutputSegments(new_segments)) {
+		if (!OutputSegments(new_segments, &first_packets)) {
 			warn("Failed to write new segments");
 			return false;
 		}
 
 
-		if (!OutputPackets(final_segment)) {
+		if (!OutputPackets(final_segment, &first_packets)) {
 			warn("Failed to write final segment");
 			return false;
 		}
