@@ -292,7 +292,6 @@ private:
 			return;
 
 		pkt.dts -= idx->second.dts;
-		pkt.pts -= idx->second.pts;
 	}
 
 	bool OutputPackets(packets_segment &seg,
