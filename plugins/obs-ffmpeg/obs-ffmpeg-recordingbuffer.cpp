@@ -292,6 +292,7 @@ private:
 			return;
 
 		pkt.dts -= idx->second.dts;
+		pkt.pts -= max(int64_t(0), idx->second.pts);
 	}
 
 	bool OutputPackets(packets_segment &seg,
