@@ -192,19 +192,26 @@ static void log_processor_cores(void)
 
 static void log_available_memory(void)
 {
-	MEMORYSTATUS ms;
-	GlobalMemoryStatus(&ms);
+	MEMORYSTATUSEX ms;
+	ms.dwLength = sizeof(ms);
+	GlobalMemoryStatusEx(&ms);
 
 #ifdef _WIN64
-	const char *note = "";
+#define NOTE ""
+#define EXTRA_ARGS
 #else
-	const char *note = " (NOTE: 4 gigs max is normal for 32bit programs)";
+#define NOTE " (Usable: %lluMB Total, %lluMB Free)"
+#define EXTRA_ARGS ,\
+	(ms.ullTotalVirtual / (1024 * 1024)), \
+	(ms.ullAvailVirtual / (1024 * 1024))
 #endif
 
-	blog(LOG_INFO, "Physical Memory: %luMB Total, %luMB Free%s",
-			(DWORD)(ms.dwTotalPhys / 1048576),
-			(DWORD)(ms.dwAvailPhys / 1048576),
-			note);
+	blog(LOG_INFO, "Physical Memory: %lluMB Total, %lluMB Free" NOTE,
+			(ms.ullTotalPhys / 1048576),
+			(ms.ullAvailPhys / 1048576) EXTRA_ARGS);
+
+#undef EXTRA_ARGS
+#undef NOTE
 }
 
 static void log_windows_version(void)
