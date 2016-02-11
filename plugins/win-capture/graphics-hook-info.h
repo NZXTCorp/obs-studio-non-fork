@@ -7,21 +7,23 @@
 
 #include "hook-helpers.h"
 
-#define EVENT_CAPTURE_RESTART "CaptureHook_Restart"
-#define EVENT_CAPTURE_STOP    "CaptureHook_Stop"
+#define HOOK_SUFFIX "Forge"
 
-#define EVENT_HOOK_READY      "CaptureHook_HookReady"
-#define EVENT_HOOK_EXIT       "CaptureHook_Exit"
+#define EVENT_CAPTURE_RESTART "CaptureHook_Restart" HOOK_SUFFIX
+#define EVENT_CAPTURE_STOP    "CaptureHook_Stop" HOOK_SUFFIX
 
-#define EVENT_HOOK_KEEPALIVE  "CaptureHook_KeepAlive"
+#define EVENT_HOOK_READY      "CaptureHook_HookReady" HOOK_SUFFIX
+#define EVENT_HOOK_EXIT       "CaptureHook_Exit" HOOK_SUFFIX
 
-#define MUTEX_TEXTURE1        "CaptureHook_TextureMutex1"
-#define MUTEX_TEXTURE2        "CaptureHook_TextureMutex2"
+#define EVENT_HOOK_KEEPALIVE  "CaptureHook_KeepAlive" HOOK_SUFFIX
 
-#define SHMEM_HOOK_INFO       "Local\\CaptureHook_HookInfo"
-#define SHMEM_TEXTURE         "Local\\CaptureHook_Texture"
+#define MUTEX_TEXTURE1        "CaptureHook_TextureMutex1" HOOK_SUFFIX
+#define MUTEX_TEXTURE2        "CaptureHook_TextureMutex2" HOOK_SUFFIX
 
-#define PIPE_NAME             "CaptureHook_Pipe"
+#define SHMEM_HOOK_INFO       "Local\\CaptureHook_HookInfo" HOOK_SUFFIX
+#define SHMEM_TEXTURE         "Local\\CaptureHook_Texture" HOOK_SUFFIX
+
+#define PIPE_NAME             "CaptureHook_Pipe" HOOK_SUFFIX
 
 #pragma pack(push, 8)
 
