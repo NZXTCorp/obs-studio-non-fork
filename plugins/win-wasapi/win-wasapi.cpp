@@ -152,6 +152,19 @@ bool WASAPISource::InitDevice(IMMDeviceEnumerator *enumerator)
 				isInputDevice ? eCapture        : eRender,
 				isInputDevice ? eCommunications : eConsole,
 				device.Assign());
+
+		if (!SUCCEEDED(res))
+			return false;
+
+		CoTaskMemPtr<wchar_t> id;
+		res = device->GetId(&id);
+		device.Clear();
+
+		if (!SUCCEEDED(res))
+			return false;
+
+		res = enumerator->GetDevice(id, device.Assign());
+
 	} else {
 		wchar_t *w_id;
 		os_utf8_to_wcs_ptr(device_id.c_str(), device_id.size(), &w_id);
