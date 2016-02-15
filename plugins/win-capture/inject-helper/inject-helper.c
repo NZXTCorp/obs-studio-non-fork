@@ -86,6 +86,7 @@ static int inject_helper(wchar_t *argv[], const wchar_t *dll)
 
 	id = wcstol(argv[3], NULL, 10);
 	if (id == 0) {
+		fprintf(stderr, "wcstol returned 0 for '%s'", argv[3]);
 		return INJECT_ERROR_INVALID_PARAMS;
 	}
 
@@ -98,7 +99,7 @@ static int inject_helper(wchar_t *argv[], const wchar_t *dll)
 
 int main(int argc, char *argv_ansi[])
 {
-	wchar_t dll_path[MAX_PATH];
+	wchar_t dll_path[MAX_PATH] = { 0 };
 	LPWSTR pCommandLineW;
 	LPWSTR *argv;
 	int ret = INJECT_ERROR_INVALID_PARAMS;
@@ -116,8 +117,14 @@ int main(int argc, char *argv_ansi[])
 				*(++name_start) = 0;
 				wcscpy(name_start, argv[1]);
 				ret = inject_helper(argv, dll_path);
+			} else {
+				fprintf(stderr, "wcsrchr failed: %p ('%S')\n", name_start, dll_path);
 			}
+		} else {
+			fprintf(stderr, "GetModuleFileNameW failed: %d ('%S')\n", size, dll_path);
 		}
+	} else {
+		fprintf(stderr, "GetCommandLineW/CommandLineToArgvW failed: %p (%d): '%S'\n", argv, argc, pCommandLineW);
 	}
 	LocalFree(argv);
 
