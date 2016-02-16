@@ -125,6 +125,17 @@ int main(int argc, char *argv_ansi[])
 		}
 	} else {
 		fprintf(stderr, "GetCommandLineW/CommandLineToArgvW failed: %p (%d): '%S'\n", argv, argc, pCommandLineW);
+		if (argv) {
+			for (int i = 0; i < argc; i++)
+				fprintf(stderr, "arg %d: '%S'\n", i, argv[i]);
+			size_t len = wcslen(pCommandLineW);
+			if (len) {
+				fprintf(stderr, "command line (%d): ", len);
+					for (size_t i = 0; i < len; i++)
+						fprintf(stderr, "%#x", (int)pCommandLineW[i]);
+				fprintf(stderr, "\n");
+			}
+		}
 	}
 	LocalFree(argv);
 
