@@ -881,13 +881,14 @@ static inline bool inject_hook(struct game_capture *gc)
 		success = create_inject_process(gc, inject_path, hook_dll);
 	}
 
+cleanup:
+	bfree(inject_path);
+	bfree(hook_path);
+
 	if (!success) {
 		signal_handler_signal(gc->signals, "inject_failed", &gc->inject_fail_calldata);
 	}
 
-cleanup:
-	bfree(inject_path);
-	bfree(hook_path);
 	return success;
 }
 
