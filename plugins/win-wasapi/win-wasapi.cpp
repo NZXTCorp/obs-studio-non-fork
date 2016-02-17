@@ -18,11 +18,16 @@ static void GetWASAPIDefaults(obs_data_t *settings);
 #define KSAUDIO_SPEAKER_4POINT1 (KSAUDIO_SPEAKER_QUAD|SPEAKER_LOW_FREQUENCY)
 #define KSAUDIO_SPEAKER_2POINT1 (KSAUDIO_SPEAKER_STEREO|SPEAKER_LOW_FREQUENCY)
 
+class MMNotifyClient;
 class WASAPISource {
 	ComPtr<IMMDevice>           device;
 	ComPtr<IAudioClient>        client;
 	ComPtr<IAudioCaptureClient> capture;
 	ComPtr<IAudioRenderClient>  render;
+	
+	ComPtr<IMMDeviceEnumerator> enumerator;
+	ComPtr<MMNotifyClient>      notify;
+	friend class MMNotifyClient;
 
 	obs_source_t                *source;
 	string                      device_id;
@@ -66,12 +71,99 @@ class WASAPISource {
 
 	void UpdateSettings(obs_data_t *settings);
 
+	void DefaultDeviceChanged();
 public:
 	WASAPISource(obs_data_t *settings, obs_source_t *source_, bool input);
 	inline ~WASAPISource();
 
 	void Update(obs_data_t *settings);
 };
+
+/* ------------------------------------------------------------------------- */
+
+class MMNotifyClient : public IMMNotificationClient
+{
+	LONG refCount;
+	WASAPISource *pSource;
+public:
+	MMNotifyClient(WASAPISource *source) :
+		refCount(1),
+		pSource(source)
+	{
+	}
+
+	~MMNotifyClient()
+	{
+	}
+
+	ULONG STDMETHODCALLTYPE AddRef()
+	{
+		return InterlockedIncrement(&refCount);
+	}
+
+	ULONG STDMETHODCALLTYPE Release()
+	{
+		ULONG ulRef = InterlockedDecrement(&refCount);
+		if (0 == ulRef)	{
+			delete this;
+		}
+		return ulRef;
+	}
+
+	HRESULT STDMETHODCALLTYPE QueryInterface(
+		REFIID riid, VOID **ppvInterface)
+	{
+		if (IID_IUnknown == riid) {
+			AddRef();
+			*ppvInterface = (IUnknown*)this;
+		}
+		else if (__uuidof(IMMNotificationClient) == riid)	{
+			AddRef();
+			*ppvInterface = (IMMNotificationClient*)this;
+		}
+		else {
+			*ppvInterface = NULL;
+			return E_NOINTERFACE;
+		}
+		return S_OK;
+	}
+
+	HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(
+		EDataFlow flow, ERole role,
+		LPCWSTR pwstrDeviceId)
+	{
+		if (flow == eCapture && role == eCommunications)
+			blog(LOG_INFO, "[wasapi %d] default device change: %S", 
+				GetCurrentThreadId(), pwstrDeviceId);
+
+		if (pSource)
+			pSource->DefaultDeviceChanged();
+
+		return S_OK;
+	}
+
+	HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR pwstrDeviceId) {
+		return S_OK;
+	}
+
+	HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR pwstrDeviceId) {
+		return S_OK;
+	}
+
+	HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(
+		LPCWSTR pwstrDeviceId,
+		DWORD dwNewState) {
+		return S_OK;
+	}
+
+	HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(
+		LPCWSTR pwstrDeviceId,
+		const PROPERTYKEY key) {
+		return S_OK;
+	}
+};
+
+/* ------------------------------------------------------------------------- */
 
 WASAPISource::WASAPISource(obs_data_t *settings, obs_source_t *source_,
 		bool input)
@@ -119,6 +211,9 @@ inline void WASAPISource::Stop()
 
 inline WASAPISource::~WASAPISource()
 {
+	if (enumerator && notify)
+		enumerator->UnregisterEndpointNotificationCallback(notify);
+
 	Stop();
 }
 
@@ -134,6 +229,10 @@ void WASAPISource::Update(obs_data_t *settings)
 	string newDevice = obs_data_get_string(settings, OPT_DEVICE_ID);
 	bool restart = newDevice.compare(device_id) != 0;
 
+	blog(LOG_INFO, "[wasapi %d] Update: old device: %s, new device: %s "
+		"(restart: %s)", GetCurrentThreadId(), device_id.c_str(), 
+		newDevice.c_str(), restart ? "true" : "false");
+
 	if (restart)
 		Stop();
 
@@ -143,10 +242,24 @@ void WASAPISource::Update(obs_data_t *settings)
 		Start();
 }
 
+void WASAPISource::DefaultDeviceChanged()
+{
+	if (!isDefaultDevice && !isInputDevice)
+		return;
+
+	blog(LOG_INFO, "[wasapi %d] InitDevice: restarting to select new "
+		"default device", GetCurrentThreadId());
+
+	Stop();
+	Start();
+}
+
 bool WASAPISource::InitDevice(IMMDeviceEnumerator *enumerator)
 {
 	HRESULT res;
-
+	blog(LOG_INFO, "[wasapi %d] InitDevice: selecting device (default: %s)", 
+		GetCurrentThreadId(), isDefaultDevice ? "true" : "false");
+	
 	if (isDefaultDevice) {
 		res = enumerator->GetDefaultAudioEndpoint(
 				isInputDevice ? eCapture        : eRender,
@@ -307,18 +420,24 @@ void WASAPISource::InitCapture()
 
 void WASAPISource::Initialize()
 {
-	ComPtr<IMMDeviceEnumerator> enumerator;
 	HRESULT res;
 
-	res = CoCreateInstance(__uuidof(MMDeviceEnumerator),
+	if (!enumerator) {
+		res = CoCreateInstance(__uuidof(MMDeviceEnumerator),
 			nullptr, CLSCTX_ALL,
 			__uuidof(IMMDeviceEnumerator),
 			(void**)enumerator.Assign());
-	if (FAILED(res))
-		throw HRError("Failed to create enumerator", res);
+		if (FAILED(res))
+			throw HRError("Failed to create enumerator", res);
+	}
 
 	if (!InitDevice(enumerator))
 		return;
+
+	if (!notify) {
+		notify = new MMNotifyClient(this);
+		enumerator->RegisterEndpointNotificationCallback(notify);
+	}
 
 	device_name = GetDeviceName(device);
 
