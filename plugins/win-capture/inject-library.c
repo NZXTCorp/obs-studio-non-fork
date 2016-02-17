@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include "obfuscate.h"
 #include "inject-library.h"
 
@@ -49,15 +50,20 @@ int inject_library_obf(HANDLE process, const wchar_t *dll,
 
 	/* -------------------------------- */
 
+	SetLastError(0);
+
 	size = (wcslen(dll) + 1) * sizeof(wchar_t);
 	mem = virtual_alloc_ex(process, NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	if (!mem) {
+		fprintf(stderr, "virtual_alloc_ex failed (tried with %llu bytes): %#x\n", (unsigned long long)size, GetLastError());
 		goto fail;
 	}
 
-	success = write_process_memory(process, mem, dll,
+	success = write_process_memory(process, mem, dll, // check for dependencies first? e.g. user32, ...
 			size, &written_size);
 	if (!success) {
+		fprintf(stderr, "write_process_memory failed (dll: '%S', size: %llu, written_size: %llu): %#x\n",
+				dll, (unsigned long long)size, (unsigned long long)written_size, GetLastError());
 		goto fail;
 	}
 
@@ -65,6 +71,7 @@ int inject_library_obf(HANDLE process, const wchar_t *dll,
 			(LPTHREAD_START_ROUTINE)load_library_w, mem, 0,
 			&thread_id);
 	if (!thread) {
+		fprintf(stderr, "create_remote_thread failed: %#x\n", GetLastError());
 		goto fail;
 	}
 
@@ -112,16 +119,19 @@ int inject_library_safe_obf(DWORD thread_id, const wchar_t *dll,
 	size_t i;
 
 	if (!lib || !user32) {
+		fprintf(stderr, "GetModuleHandleW/LoadLibraryW failed (USER32 -> %p, '%S' -> %p): %#x\n", user32, dll, lib, GetLastError());
 		return INJECT_ERROR_UNLIKELY_FAIL;
 	}
 
 #ifdef _WIN64
-	proc = GetProcAddress(lib, "dummy_debug_proc");
+#define DUMMY_PROC "dummy_debug_proc"
 #else
-	proc = GetProcAddress(lib, "_dummy_debug_proc@12");
+#define DUMMY_PROC "_dummy_debug_proc@12"
 #endif
+	proc = GetProcAddress(lib, DUMMY_PROC);
 
 	if (!proc) {
+		fprintf(stderr, "GetProcAddress " DUMMY_PROC ": %#x\n", GetLastError());
 		return INJECT_ERROR_UNLIKELY_FAIL;
 	}
 
@@ -130,6 +140,7 @@ int inject_library_safe_obf(DWORD thread_id, const wchar_t *dll,
 
 	hook = set_windows_hook_ex(WH_GETMESSAGE, proc, lib, thread_id);
 	if (!hook) {
+		fprintf(stderr, "set_windows_hook_ex failed: %#x\n", GetLastError());
 		return GetLastError();
 	}
 
