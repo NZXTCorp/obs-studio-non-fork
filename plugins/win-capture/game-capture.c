@@ -442,7 +442,7 @@ void monitored_process_exit(void *context, calldata_t *data)
 static const char *capture_signals[] = {
 	"void start_capture(ptr source, int width, int height)",
 	"void stop_capture(ptr source)",
-	"void inject_failed(ptr source)",
+	"void inject_failed(ptr source, ptr injector_exit_code)",
 	"void inject_request(ptr source, bool process_is_64bit, "
 	                    "bool anti_cheat, int process_thread_id)",
 	"void monitor_process(ptr source, int process_id)",
@@ -1464,6 +1464,13 @@ static inline bool capture_valid(struct game_capture *gc)
 	return !target_process_died(gc);
 }
 
+static void send_inject_failed(struct game_capture *gc, long exit_code)
+{
+	calldata_set_ptr(&gc->inject_fail_calldata, "injector_exit_code", &exit_code);
+	signal_handler_signal(gc->signals, "inject_failed", &gc->inject_fail_calldata);
+	calldata_set_ptr(&gc->inject_fail_calldata, "injector_exit_code", NULL);
+}
+
 static void game_capture_tick(void *data, float seconds)
 {
 	struct game_capture *gc = data;
@@ -1487,7 +1494,7 @@ static void game_capture_tick(void *data, float seconds)
 		if (exit_code != 0) {
 			warn("inject process failed: %ld", (long)exit_code);
 			gc->error_acquiring = true;
-			signal_handler_signal(gc->signals, "inject_failed", &gc->inject_fail_calldata);
+			send_inject_failed(gc, (long)exit_code);
 
 		} else if (!gc->capturing) {
 			gc->retry_interval = ERROR_RETRY_INTERVAL;
@@ -1510,7 +1517,7 @@ static void game_capture_tick(void *data, float seconds)
 		if (code_valid && code != 0) {
 			warn("ipc inject process failed: %ld", (long)code);
 			gc->error_acquiring = true;
-			signal_handler_signal(gc->signals, "inject_failed", &gc->inject_fail_calldata);
+			send_inject_failed(gc, (long)code);
 
 		} else if (code_valid && !gc->capturing) {
 			gc->retry_interval = ERROR_RETRY_INTERVAL;
