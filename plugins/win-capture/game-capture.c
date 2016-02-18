@@ -583,7 +583,8 @@ static inline bool open_target_process(struct game_capture *gc)
 
 		info("process '%ld' inaccessible for direct hook", (long)gc->process_id);
 
-		gc->target_process = open_process(SYNCHRONIZE, false, gc->process_id);
+		gc->target_process = open_process(PROCESS_QUERY_LIMITED_INFORMATION |
+				SYNCHRONIZE, false, gc->process_id);
 		
 		if (!gc->target_process) {
 			info("process '%ld' inaccessible, using helper", (long)gc->process_id);
