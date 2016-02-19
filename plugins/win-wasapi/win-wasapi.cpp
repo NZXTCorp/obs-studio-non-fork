@@ -9,6 +9,7 @@
 #include <util/threading.h>
 
 #include <thread>
+#include <atomic>
 
 using namespace std;
 
@@ -74,7 +75,7 @@ class WASAPISource {
 
 	void UpdateSettings(obs_data_t *settings);
 
-	void DefaultDeviceChanged(const wchar_t *new_device);
+	void DefaultDeviceChanged(EDataFlow flow, ERole role, const wchar_t *new_device);
 public:
 	WASAPISource(obs_data_t *settings, obs_source_t *source_, bool input);
 	inline ~WASAPISource();
@@ -135,13 +136,12 @@ public:
 		EDataFlow flow, ERole role,
 		LPCWSTR pwstrDeviceId)
 	{
-		if (flow == eCapture && role == eCommunications)
-			blog(LOG_INFO, "[wasapi %d] default device change: %S", 
-				GetCurrentThreadId(), pwstrDeviceId);
+		if (flow==eRender)
+			blog(LOG_INFO, "[wasapi] OnDefaultDeviceChanged %#x flow=%d role=%d", this, flow, role);
 
 		if (pSource)
-			pSource->DefaultDeviceChanged(pwstrDeviceId);
-
+				pSource->DefaultDeviceChanged(flow, role, pwstrDeviceId);
+		
 		return S_OK;
 	}
 
@@ -232,10 +232,6 @@ void WASAPISource::Update(obs_data_t *settings)
 	string newDevice = obs_data_get_string(settings, OPT_DEVICE_ID);
 	bool restart = newDevice.compare(device_id) != 0;
 
-	blog(LOG_INFO, "[wasapi %d] Update: old device: %s, new device: %s "
-		"(restart: %s)", GetCurrentThreadId(), device_id.c_str(), 
-		newDevice.c_str(), restart ? "true" : "false");
-
 	if (restart)
 		Stop();
 
@@ -245,29 +241,39 @@ void WASAPISource::Update(obs_data_t *settings)
 		Start();
 }
 
-void WASAPISource::DefaultDeviceChanged(const wchar_t *new_device)
+void WASAPISource::DefaultDeviceChanged(EDataFlow flow, ERole role, const wchar_t *new_device)
 {
-	if (!isDefaultDevice || !isInputDevice)
+	if (!isDefaultDevice)
 		return;
-	
-	blog(LOG_INFO, "[wasapi %d] DefaultDeviceChanged: default device changed! (active: %s)", GetCurrentThreadId(), active?"true":"false");
-	
-	/* check default_device_id to see if restart required & spawn a thread to do it */
-	if (default_device_id.compare(new_device) != 0) {
-		Stop();
-		std::thread([](WASAPISource &source) {
-			blog(LOG_INFO, "[wasapi %d] DefaultDeviceChanged: restarting to select new default device", GetCurrentThreadId());
 
-			source.Start();
-		}, *this).detach();
+	if (isInputDevice) {
+		if (flow != eCapture || role != eCommunications)
+			return;
+	}
+	else {
+		if (flow != eRender || role != eConsole)
+			return;
+	}	
+
+	if (default_device_id.compare(new_device) != 0) {
+		blog(LOG_INFO, "[wasapi] DefaultDeviceChanged: %#x flow=%d role=%d, restarting", notify.Get(), flow, role);
+		/* restart has to be done from a separate thread */
+		std::thread([](WASAPISource *source) {
+			static atomic<int> entry_count = 0;
+			if (entry_count)
+				return;
+
+			++entry_count;
+			source->Stop();
+			source->Start();
+			--entry_count;
+		}, this).detach();
 	}
 }
 
 bool WASAPISource::InitDevice(IMMDeviceEnumerator *enumerator)
 {
 	HRESULT res;
-	blog(LOG_INFO, "[wasapi %d] InitDevice: selecting device (default: %s)", 
-		GetCurrentThreadId(), isDefaultDevice ? "true" : "false");
 	
 	if (isDefaultDevice) {
 		res = enumerator->GetDefaultAudioEndpoint(
