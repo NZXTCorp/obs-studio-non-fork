@@ -50,6 +50,14 @@ int inject_library_obf(HANDLE process, const wchar_t *dll,
 
 	/* -------------------------------- */
 
+	FILETIME create_time, exit_time, kernel_time, user_time;
+	FILETIME current_time;
+	GetSystemTimePreciseAsFileTime(&current_time);
+	if (GetProcessTimes(process, &create_time, &exit_time, &kernel_time, &user_time)) {
+		LONGLONG diff = ((LARGE_INTEGER*)&current_time)->QuadPart - ((LARGE_INTEGER*)&create_time)->QuadPart;
+		fprintf(stderr, "process has been alive for %g ms\n", diff / 10000.);
+	}
+
 	SetLastError(0);
 
 	size = (wcslen(dll) + 1) * sizeof(wchar_t);
