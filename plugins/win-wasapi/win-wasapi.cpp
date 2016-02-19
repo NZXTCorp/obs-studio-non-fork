@@ -8,6 +8,8 @@
 #include <util/windows/CoTaskMemPtr.hpp>
 #include <util/threading.h>
 
+#include <thread>
+
 using namespace std;
 
 #define OPT_DEVICE_ID         "device_id"
@@ -32,6 +34,7 @@ class WASAPISource {
 	obs_source_t                *source;
 	string                      device_id;
 	string                      device_name;
+	wstring                     default_device_id;
 	bool                        isInputDevice;
 	bool                        useDeviceTiming = false;
 	bool                        isDefaultDevice = false;
@@ -71,7 +74,7 @@ class WASAPISource {
 
 	void UpdateSettings(obs_data_t *settings);
 
-	void DefaultDeviceChanged();
+	void DefaultDeviceChanged(const wchar_t *new_device);
 public:
 	WASAPISource(obs_data_t *settings, obs_source_t *source_, bool input);
 	inline ~WASAPISource();
@@ -137,7 +140,7 @@ public:
 				GetCurrentThreadId(), pwstrDeviceId);
 
 		if (pSource)
-			pSource->DefaultDeviceChanged();
+			pSource->DefaultDeviceChanged(pwstrDeviceId);
 
 		return S_OK;
 	}
@@ -242,16 +245,22 @@ void WASAPISource::Update(obs_data_t *settings)
 		Start();
 }
 
-void WASAPISource::DefaultDeviceChanged()
+void WASAPISource::DefaultDeviceChanged(const wchar_t *new_device)
 {
-	if (!isDefaultDevice && !isInputDevice)
+	if (!isDefaultDevice || !isInputDevice)
 		return;
+	
+	blog(LOG_INFO, "[wasapi %d] DefaultDeviceChanged: default device changed! (active: %s)", GetCurrentThreadId(), active?"true":"false");
+	
+	/* check default_device_id to see if restart required & spawn a thread to do it */
+	if (default_device_id.compare(new_device) != 0) {
+		Stop();
+		std::thread([](WASAPISource &source) {
+			blog(LOG_INFO, "[wasapi %d] DefaultDeviceChanged: restarting to select new default device", GetCurrentThreadId());
 
-	blog(LOG_INFO, "[wasapi %d] InitDevice: restarting to select new "
-		"default device", GetCurrentThreadId());
-
-	Stop();
-	Start();
+			source.Start();
+		}, *this).detach();
+	}
 }
 
 bool WASAPISource::InitDevice(IMMDeviceEnumerator *enumerator)
@@ -277,6 +286,10 @@ bool WASAPISource::InitDevice(IMMDeviceEnumerator *enumerator)
 			return false;
 
 		res = enumerator->GetDevice(id, device.Assign());
+		
+		/* store the actual device id so we can check against it when 
+		receiving change notifications later */
+		default_device_id.assign(id);
 
 	} else {
 		wchar_t *w_id;
