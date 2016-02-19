@@ -54,6 +54,8 @@ class WASAPISource {
 	audio_format                format;
 	uint32_t                    sampleRate;
 
+	uint64_t                    lastDefaultUpdate;
+
 	static DWORD WINAPI ReconnectThread(LPVOID param);
 	static DWORD WINAPI CaptureThread(LPVOID param);
 
@@ -136,11 +138,8 @@ public:
 		EDataFlow flow, ERole role,
 		LPCWSTR pwstrDeviceId)
 	{
-		if (flow==eRender)
-			blog(LOG_INFO, "[wasapi] OnDefaultDeviceChanged %#x flow=%d role=%d", this, flow, role);
-
 		if (pSource)
-				pSource->DefaultDeviceChanged(flow, role, pwstrDeviceId);
+			pSource->DefaultDeviceChanged(flow, role, pwstrDeviceId);
 		
 		return S_OK;
 	}
@@ -171,7 +170,8 @@ public:
 WASAPISource::WASAPISource(obs_data_t *settings, obs_source_t *source_,
 		bool input)
 	: source          (source_),
-	  isInputDevice   (input)
+	  isInputDevice   (input),
+	  lastDefaultUpdate(os_gettime_ns())
 {
 	UpdateSettings(settings);
 
@@ -257,16 +257,17 @@ void WASAPISource::DefaultDeviceChanged(EDataFlow flow, ERole role, const wchar_
 
 	if (default_device_id.compare(new_device) != 0) {
 		blog(LOG_INFO, "[wasapi] DefaultDeviceChanged: %#x flow=%d role=%d, restarting", notify.Get(), flow, role);
+		/* rate limit to one change per 250ms like chromium does */
+		uint64_t thisUpdate = os_gettime_ns();
+		if (thisUpdate - lastDefaultUpdate < 250000000)
+			return;
+
+		lastDefaultUpdate = thisUpdate;
+		
 		/* restart has to be done from a separate thread */
 		std::thread([](WASAPISource *source) {
-			static atomic<int> entry_count = 0;
-			if (entry_count)
-				return;
-
-			++entry_count;
 			source->Stop();
 			source->Start();
-			--entry_count;
 		}, this).detach();
 	}
 }
