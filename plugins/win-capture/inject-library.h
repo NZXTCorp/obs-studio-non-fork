@@ -5,6 +5,12 @@
 #define INJECT_ERROR_INVALID_PARAMS    -2
 #define INJECT_ERROR_OPEN_PROCESS_FAIL -3
 #define INJECT_ERROR_UNLIKELY_FAIL     -4
+#define INJECT_ERROR_VALLOC_FAIL       -40
+#define INJECT_ERROR_WPROCMEM_FAIL     -41
+#define INJECT_ERROR_CREMOTETHREAD_FAIL -42
+#define INJECT_ERROR_LOADLIB_FAIL      -80
+#define INJECT_ERROR_GETPROCADDR_FAIL  -81
+#define INJECT_ERROR_WINHOOKEX_FAIL    -82
 
 extern int inject_library_obf(HANDLE process, const wchar_t *dll,
 		const char *create_remote_thread_obf, uint64_t obf1,
