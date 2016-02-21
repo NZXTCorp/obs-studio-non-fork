@@ -11,6 +11,8 @@ typedef BOOL (WINAPI *write_process_memory_t)(HANDLE, LPVOID, LPCVOID, SIZE_T,
 typedef LPVOID (WINAPI *virtual_alloc_ex_t)(HANDLE, LPVOID, SIZE_T, DWORD,
 		DWORD);
 typedef BOOL (WINAPI *virtual_free_ex_t)(HANDLE, LPVOID, SIZE_T, DWORD);
+typedef VOID (WINAPI *get_system_time_as_file_time_t)(LPFILETIME);
+
 
 int inject_library_obf(HANDLE process, const wchar_t *dll,
 		const char *create_remote_thread_obf, uint64_t obf1,
@@ -36,6 +38,7 @@ int inject_library_obf(HANDLE process, const wchar_t *dll,
 	virtual_alloc_ex_t virtual_alloc_ex;
 	virtual_free_ex_t virtual_free_ex;
 	FARPROC load_library_w;
+	get_system_time_as_file_time_t get_system_time = NULL;
 
 	create_remote_thread = get_obfuscated_func(kernel32,
 			create_remote_thread_obf, obf1);
@@ -50,9 +53,15 @@ int inject_library_obf(HANDLE process, const wchar_t *dll,
 
 	/* -------------------------------- */
 
+	get_system_time = (get_system_time_as_file_time_t)GetProcAddress(kernel32, "GetSystemTimePreciseAsFileTime");
+	if (!get_system_time)
+		get_system_time = GetSystemTimeAsFileTime;
+
+	/* -------------------------------- */
+
 	FILETIME create_time, exit_time, kernel_time, user_time;
 	FILETIME current_time;
-	GetSystemTimePreciseAsFileTime(&current_time);
+	get_system_time(&current_time);
 	if (GetProcessTimes(process, &create_time, &exit_time, &kernel_time, &user_time)) {
 		LONGLONG diff = ((LARGE_INTEGER*)&current_time)->QuadPart - ((LARGE_INTEGER*)&create_time)->QuadPart;
 		fprintf(stderr, "process has been alive for %g ms\n", diff / 10000.);
