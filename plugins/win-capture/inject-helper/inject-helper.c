@@ -67,12 +67,14 @@ static inline int inject_library_full(DWORD process_id, const wchar_t *dll)
 	HANDLE process = open_process(PROCESS_ALL_ACCESS, false, process_id);
 	int ret;
 
-	if (process) {
-		ret = inject_library(process, dll);
-		CloseHandle(process);
-	} else {
-		ret = INJECT_ERROR_OPEN_PROCESS_FAIL;
-	}
+	if (!process)
+		return INJECT_ERROR_OPEN_PROCESS_FAIL;
+
+	if (WaitForSingleObject(process, 0) == WAIT_OBJECT_0)
+		return INJECT_ERROR_PROCESS_EXITED;
+
+	ret = inject_library(process, dll);
+	CloseHandle(process);
 
 	return ret;
 }
