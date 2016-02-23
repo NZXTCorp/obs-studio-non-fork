@@ -71,7 +71,7 @@ struct ffmpeg_muxer;
 
 }
 
-static void build_command_line(struct ffmpeg_muxer *stream, const dstr *path,
+static bool build_command_line(struct ffmpeg_muxer *stream, const dstr *path,
 		struct dstr *cmd);
 static bool write_packet(struct ffmpeg_muxer *stream, os_process_pipe_t *pipe,
 		struct encoder_packet *packet);
@@ -189,7 +189,12 @@ struct buffer_output {
 		dstr_replace(escaped_path, "\"", "\"\""); //?
 
 		DStr cmd;
-		build_command_line(stream, escaped_path, cmd);
+		if (!build_command_line(stream, escaped_path, cmd)) {
+			warn("Failed to build command line");
+			thread_finished = true;
+			return;
+		}
+
 		pipe.reset(os_process_pipe_create(cmd->array, "w"));
 		if (!pipe) {
 			warn("Failed to create process pipe");
@@ -485,7 +490,7 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 
 /* TODO: allow codecs other than h264 whenever we start using them */
 
-static void add_video_encoder_params(struct ffmpeg_muxer *stream,
+static bool add_video_encoder_params(struct ffmpeg_muxer *stream,
 		struct dstr *cmd, obs_encoder_t *vencoder)
 {
 	obs_data_t *settings = obs_encoder_get_settings(vencoder);
@@ -495,6 +500,9 @@ static void add_video_encoder_params(struct ffmpeg_muxer *stream,
 
 	obs_data_release(settings);
 
+	if (!info)
+		return false;
+
 	dstr_catf(cmd, "%s %d %d %d %d %d ",
 			"h264",
 			bitrate,
@@ -502,9 +510,11 @@ static void add_video_encoder_params(struct ffmpeg_muxer *stream,
 			obs_output_get_height(stream->output),
 			(int)info->fps_num,
 			(int)info->fps_den);
+
+	return true;
 }
 
-static void add_audio_encoder_params(struct dstr *cmd, obs_encoder_t *aencoder)
+static bool add_audio_encoder_params(struct dstr *cmd, obs_encoder_t *aencoder)
 {
 	obs_data_t *settings = obs_encoder_get_settings(aencoder);
 	int bitrate = (int)obs_data_get_int(settings, "bitrate");
@@ -512,6 +522,9 @@ static void add_audio_encoder_params(struct dstr *cmd, obs_encoder_t *aencoder)
 	struct dstr name = {0};
 
 	obs_data_release(settings);
+
+	if (!audio)
+		return false;
 
 	dstr_copy(&name, obs_encoder_get_name(aencoder));
 	dstr_replace(&name, "\"", "\"\"");
@@ -523,6 +536,8 @@ static void add_audio_encoder_params(struct dstr *cmd, obs_encoder_t *aencoder)
 			(int)audio_output_get_channels(audio));
 
 	dstr_free(&name);
+
+	return true;
 }
 
 #ifdef _MSC_VER
@@ -577,7 +592,7 @@ static void add_muxer_params(struct dstr *cmd, struct ffmpeg_muxer *stream)
 	dstr_free(&mux);
 }
 
-static void build_command_line(struct ffmpeg_muxer *stream, const dstr *path,
+static bool build_command_line(struct ffmpeg_muxer *stream, const dstr *path,
 		struct dstr *cmd)
 {
 	obs_encoder_t *vencoder = obs_output_get_video_encoder(stream->output);
@@ -600,18 +615,21 @@ static void build_command_line(struct ffmpeg_muxer *stream, const dstr *path,
 	dstr_cat_dstr(cmd, path);
 	dstr_catf(cmd, "\" %d %d ", vencoder ? 1 : 0, num_tracks);
 
-	if (vencoder)
-		add_video_encoder_params(stream, cmd, vencoder);
+	if (vencoder && !add_video_encoder_params(stream, cmd, vencoder))
+		return false;
 
 	if (num_tracks) {
 		dstr_cat(cmd, "aac ");
 
 		for (int i = 0; i < num_tracks; i++) {
-			add_audio_encoder_params(cmd, aencoders[i]);
+			if (!add_audio_encoder_params(cmd, aencoders[i]))
+				return false;
 		}
 	}
 
 	add_muxer_params(cmd, stream);
+
+	return true;
 }
 
 static bool ffmpeg_mux_start(void *data)
