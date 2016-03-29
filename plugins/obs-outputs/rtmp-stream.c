@@ -42,6 +42,7 @@
 
 #define OPT_DROP_THRESHOLD "drop_threshold_ms"
 #define OPT_MAX_SHUTDOWN_TIME_SEC "max_shutdown_time_sec"
+#define OPT_ENCODER_NAME "encoder_name"
 
 //#define TEST_FRAMEDROPS
 
@@ -66,6 +67,7 @@ struct rtmp_stream {
 
 	struct dstr      path, key;
 	struct dstr      username, password;
+	struct dstr      encoder_name_suffix;
 	struct dstr      encoder_name;
 
 	/* frame drop variables */
@@ -161,6 +163,7 @@ static void rtmp_stream_destroy(void *data)
 		dstr_free(&stream->key);
 		dstr_free(&stream->username);
 		dstr_free(&stream->password);
+		dstr_free(&stream->encoder_name_suffix);
 		dstr_free(&stream->encoder_name);
 		os_event_destroy(stream->stop_event);
 		os_sem_destroy(stream->send_sem);
@@ -586,6 +589,10 @@ static int try_connect(struct rtmp_stream *stream)
 
 	dstr_cat(&stream->encoder_name, "; FMSc/1.0)");
 
+	if (stream->encoder_name_suffix.len)
+		dstr_catf(&stream->encoder_name, " %s",
+				stream->encoder_name_suffix.array);
+
 	set_rtmp_dstr(&stream->rtmp.Link.pubUser,   &stream->username);
 	set_rtmp_dstr(&stream->rtmp.Link.pubPasswd, &stream->password);
 	set_rtmp_dstr(&stream->rtmp.Link.flashVer,  &stream->encoder_name);
@@ -648,6 +655,8 @@ static bool init_connect(struct rtmp_stream *stream)
 	dstr_copy(&stream->key,      obs_service_get_key(service));
 	dstr_copy(&stream->username, obs_service_get_username(service));
 	dstr_copy(&stream->password, obs_service_get_password(service));
+	dstr_copy(&stream->encoder_name_suffix,
+		obs_data_get_string(settings, OPT_ENCODER_NAME));
 	stream->drop_threshold_usec =
 		(int64_t)obs_data_get_int(settings, OPT_DROP_THRESHOLD) * 1000;
 	stream->max_shutdown_time_sec =
@@ -826,6 +835,7 @@ static void rtmp_stream_defaults(obs_data_t *defaults)
 {
 	obs_data_set_default_int(defaults, OPT_DROP_THRESHOLD, 600);
 	obs_data_set_default_int(defaults, OPT_MAX_SHUTDOWN_TIME_SEC, 5);
+	obs_data_set_default_string(defaults, OPT_ENCODER_NAME, "");
 }
 
 static obs_properties_t *rtmp_stream_properties(void *unused)
