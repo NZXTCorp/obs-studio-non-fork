@@ -335,7 +335,7 @@ bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 err:
 	av_free_packet(&packet);
 	av_frame_free(&frame);
-	avcodec_free_context(cctx);
+	avcodec_free_context(&cctx);
 	avformat_free_context(ctx);
 	return success;
 }
