@@ -122,6 +122,11 @@ struct game_capture {
 
 	ipc_pipe_server_t             pipe;
 	gs_texture_t                  *texture;
+	gs_texrender_t                *copy_tex;
+	gs_stagesurf_t                *surf;
+	bool                          copied : 1;
+	bool                          staged : 1;
+	bool                          saved : 1;
 	struct hook_info              *global_hook_info;
 	HANDLE                        keep_alive;
 	HANDLE                        hook_restart;
@@ -223,8 +228,11 @@ static void stop_capture(struct game_capture *gc)
 	if (gc->texture) {
 		obs_enter_graphics();
 		gs_texture_destroy(gc->texture);
+		gs_texrender_destroy(gc->copy_tex);
+		gs_stagesurface_destroy(gc->surf);
 		obs_leave_graphics();
 		gc->texture = NULL;
+		gc->surf = NULL;
 	}
 
 	if (gc->capturing)
@@ -487,6 +495,10 @@ static void *game_capture_create(obs_data_t *settings, obs_source_t *source)
 	proc_handler_add(proc, "void monitored_process_exit(int process_id, "
 			                                           "int code)",
 			monitored_process_exit, gc);
+	
+	obs_enter_graphics();
+	gc->copy_tex = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
+	obs_leave_graphics();
 
 	game_capture_update(gc, settings);
 	return gc;
@@ -1391,6 +1403,9 @@ static inline bool init_shmem_capture(struct game_capture *gc)
 	gs_texture_destroy(gc->texture);
 	gc->texture = gs_texture_create(gc->cx, gc->cy, format, 1, NULL,
 			GS_DYNAMIC);
+
+	gs_stagesurface_destroy(gc->surf);
+	gc->surf = gs_stagesurface_create(gc->cx, gc->cy, GS_RGBA);
 	obs_leave_graphics();
 
 	if (!gc->texture) {
@@ -1407,6 +1422,11 @@ static inline bool init_shtex_capture(struct game_capture *gc)
 	obs_enter_graphics();
 	gs_texture_destroy(gc->texture);
 	gc->texture = gs_texture_open_shared(gc->shtex_data->tex_handle);
+
+	gs_stagesurface_destroy(gc->surf);
+	gc->surf = gs_stagesurface_create(gs_texture_get_width(gc->texture),
+		gs_texture_get_height(gc->texture),
+		GS_RGBA);
 	obs_leave_graphics();
 
 	if (!gc->texture) {
@@ -1475,6 +1495,13 @@ static void send_inject_failed(struct game_capture *gc, long exit_code)
 static void game_capture_tick(void *data, float seconds)
 {
 	struct game_capture *gc = data;
+
+	if (gc->staged && !gc->saved) {
+		obs_enter_graphics();
+		gs_stagesurface_save_to_file(gc->surf, "screenshot.png");
+		obs_leave_graphics();
+		gc->saved = true;
+	}
 
 	if ((gc->hook_stop && object_signalled(gc->hook_stop)) ||
 		target_process_died(gc)) {
@@ -1607,6 +1634,26 @@ static void game_capture_render(void *data, gs_effect_t *effect)
 	struct game_capture *gc = data;
 	if (!gc->texture)
 		return;
+
+	if (gc->copied && !gc->staged) {
+		gs_texture_t *tex = gs_texrender_get_texture(gc->copy_tex);
+		gs_stage_texture(gc->surf, tex);
+		gc->staged = true;
+	}
+
+	if (!gc->copied) {
+		if (gs_texrender_begin(gc->copy_tex, gc->cx, gc->cy)) {
+			effect = obs_get_base_effect(OBS_EFFECT_OPAQUE);
+
+			while (gs_effect_loop(effect, "Draw")) {
+				obs_source_draw(gc->texture, 0, 0, 0, 0,
+					gc->global_hook_info->flip);
+			}
+
+			gs_texrender_end(gc->copy_tex);
+			gc->copied = true;
+		}
+	}
 
 	effect = obs_get_base_effect(gc->config.allow_transparency ?
 			OBS_EFFECT_DEFAULT : OBS_EFFECT_OPAQUE);
