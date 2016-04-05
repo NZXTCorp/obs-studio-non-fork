@@ -503,6 +503,8 @@ EXPORT gs_shader_t *gs_pixelshader_create_from_file(const char *file,
 
 EXPORT gs_texture_t *gs_texture_create_from_file(const char *file);
 
+EXPORT bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file);
+
 #define GS_FLIP_U (1<<0)
 #define GS_FLIP_V (1<<1)
 

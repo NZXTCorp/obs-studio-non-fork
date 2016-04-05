@@ -1,5 +1,7 @@
 #include "graphics.h"
 
+#include "util/platform.h"
+
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
@@ -218,4 +220,122 @@ gs_texture_t *gs_texture_create_from_file(const char *file)
 		free(data);
 	}
 	return tex;
+}
+
+static bool write_buffer(const char *file, AVPacket *packet)
+{
+	FILE *f = os_fopen(file, "wb+");
+	if (!f)
+		return false;
+
+	size_t written = fwrite(packet->data, sizeof(*packet->data), packet->size, f);
+
+	fclose(f);
+
+	return true;
+}
+
+bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
+{
+	bool success = false;
+	AVFormatContext *ctx = NULL;
+	AVCodec *codec = NULL;
+	AVCodecContext *cctx = NULL;
+	AVFrame *frame = NULL;
+	AVPacket packet = { 0 };
+	enum AVPixelFormat format;
+
+	if (!surf || !file)
+		return success;
+
+	switch (gs_stagesurface_get_color_format(surf)) {
+	case GS_UNKNOWN:
+	case GS_A8:
+	case GS_R8:
+	case GS_R10G10B10A2:
+	case GS_RGBA16:
+	case GS_R16:
+	case GS_RGBA16F:
+	case GS_RGBA32F:
+	case GS_RG16F:
+	case GS_RG32F:
+	case GS_R16F:
+	case GS_R32F:
+	case GS_DXT1:
+	case GS_DXT3:
+	case GS_DXT5:
+		return success;
+
+	case GS_RGBA: format = AV_PIX_FMT_RGBA; break;
+	case GS_BGRX: format = AV_PIX_FMT_BGR0; break;
+	case GS_BGRA: format = AV_PIX_FMT_BGRA; break;
+	}
+
+	if (avformat_alloc_output_context2(&ctx, NULL, NULL, file) < 0)
+		return success;
+
+	if (ctx->oformat->video_codec == AV_CODEC_ID_NONE)
+		goto err;
+
+	enum AVCodecID id = av_guess_codec(ctx->oformat, NULL, file,
+		NULL, AVMEDIA_TYPE_VIDEO);
+	if (id == AV_CODEC_ID_NONE)
+		goto err;
+
+	codec = avcodec_find_encoder(id);
+	if (!codec)
+		goto err;
+
+	cctx = avcodec_alloc_context3(codec);
+	if (!cctx)
+		goto err;
+
+	cctx->pix_fmt = format;
+	cctx->height = gs_stagesurface_get_height(surf);
+	cctx->width = gs_stagesurface_get_width(surf);
+
+	int res = 0;
+	if ((res = avcodec_open2(cctx, codec, NULL)) < 0) {
+		blog(LOG_WARNING, "%s", av_err2str(res));
+		goto err;
+	}
+
+	frame = av_frame_alloc();
+	if (!frame)
+		goto err;
+
+	frame->pts = 1;
+
+	frame->height = cctx->height;
+	frame->width = cctx->width;
+	frame->format = format;
+
+	frame->sample_aspect_ratio.den = 1;
+
+	uint8_t *data = NULL;
+	uint32_t linesize = 0;
+	if (!gs_stagesurface_map(surf, &data, &linesize))
+		goto err;
+
+	frame->linesize[0] = linesize;
+	frame->data[0] = data;
+	frame->extended_data = frame->data;
+
+	int got_packet = 0;
+	res = avcodec_encode_video2(cctx, &packet, frame, &got_packet);
+
+	gs_stagesurface_unmap(surf);
+
+	if (res < 0 || got_packet == 0)
+		goto err;
+
+	if (write_buffer(file, &packet))
+		success = true;
+
+err:
+	av_free_packet(&packet);
+	av_frame_free(&frame);
+	avcodec_free_context(cctx);
+	avformat_free_context(ctx);
+	return success;
 }
