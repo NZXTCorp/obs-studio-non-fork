@@ -136,9 +136,16 @@ struct game_capture {
 	struct {
 		gs_texrender_t            *copy_tex;
 		gs_stagesurf_t            *surf;
+		bool                      requested : 1;
 		bool                      copied : 1;
 		bool                      staged : 1;
 		bool                      saved : 1;
+		
+		struct calldata           calldata;
+
+		CRITICAL_SECTION          mutex;
+		long long                 id;
+		struct dstr               name;
 	} screenshot;
 
 	union {
@@ -268,8 +275,10 @@ static void game_capture_destroy(void *data)
 
 	free_config(&gc->config);
 
+	DeleteCriticalSection(&gc->screenshot.mutex);
 	DeleteCriticalSection(&gc->ipc_mutex);
 
+	calldata_free(&gc->screenshot.calldata);
 	calldata_free(&gc->ipc_monitor_process_calldata);
 	calldata_free(&gc->ipc_inject_calldata);
 	calldata_free(&gc->inject_fail_calldata);
@@ -451,6 +460,26 @@ void monitored_process_exit(void *context, calldata_t *data)
 	LeaveCriticalSection(&gc->ipc_mutex);
 }
 
+void screenshot_requested(void *context, calldata_t *data)
+{
+	struct game_capture *gc = context;
+	const char *filename = calldata_string(data, "filename");
+	bool filename_used = false;
+	long long id = 0;
+
+	EnterCriticalSection(&gc->screenshot.mutex);
+	if ((filename_used = !gc->screenshot.name.len)) {
+		dstr_copy(&gc->screenshot.name, filename);
+		id = ++gc->screenshot.id;
+	} else {
+		id = gc->screenshot.id;
+	}
+	LeaveCriticalSection(&gc->screenshot.mutex);
+
+	calldata_set_bool(data, "filename_used", filename_used);
+	calldata_set_int(data, "screenshot_id", id);
+}
+
 static const char *capture_signals[] = {
 	"void start_capture(ptr source, int width, int height)",
 	"void stop_capture(ptr source)",
@@ -458,6 +487,7 @@ static const char *capture_signals[] = {
 	"void inject_request(ptr source, bool process_is_64bit, "
 	                    "bool anti_cheat, int process_thread_id)",
 	"void monitor_process(ptr source, int process_id)",
+	"void screenshot_saved(ptr source, string filename, int screenshot_id)",
 	NULL
 };
 
@@ -490,7 +520,12 @@ static void *game_capture_create(obs_data_t *settings, obs_source_t *source)
 	calldata_set_int(&gc->ipc_monitor_process_calldata, "process_id", 0);
 	calldata_set_ptr(&gc->ipc_monitor_process_calldata, "source", source);
 
+	calldata_init(&gc->screenshot.calldata);
+	calldata_set_ptr(&gc->screenshot.calldata, "source", source);
+	calldata_set_int(&gc->screenshot.calldata, "screenshot_id", 0);
+
 	InitializeCriticalSection(&gc->ipc_mutex);
+	InitializeCriticalSection(&gc->screenshot.mutex);
 
 	proc_handler_t *proc = obs_source_get_proc_handler(source);
 	proc_handler_add(proc, "void injector_result(int code)",
@@ -499,6 +534,11 @@ static void *game_capture_create(obs_data_t *settings, obs_source_t *source)
 	proc_handler_add(proc, "void monitored_process_exit(int process_id, "
 			                                           "int code)",
 			monitored_process_exit, gc);
+
+	proc_handler_add(proc, "void save_screenshot(string filename, "
+			                                    "out int screenshot_id, "
+			                                    "out bool filename_used)",
+			screenshot_requested, gc);
 	
 	obs_enter_graphics();
 	gc->screenshot.copy_tex = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
@@ -1500,11 +1540,29 @@ static void handle_screenshot(struct game_capture *gc)
 {
 	if (gc->screenshot.staged && !gc->screenshot.saved) {
 		obs_enter_graphics();
-		gs_stagesurface_save_to_file(gc->screenshot.surf, "screenshot.png");
+		gs_stagesurface_save_to_file(gc->screenshot.surf, gc->screenshot.name.array);
 		obs_leave_graphics();
 		gc->screenshot.saved = true;
 	}
 
+	EnterCriticalSection(&gc->screenshot.mutex);
+	if (gc->screenshot.saved && gc->screenshot.name.len) {
+		calldata_set_int(&gc->screenshot.calldata, "screenshot_id", gc->screenshot.id);
+		calldata_set_string(&gc->screenshot.calldata, "filename", gc->screenshot.name.array);
+
+		signal_handler_signal(gc->signals, "screenshot_saved", &gc->screenshot.calldata);
+
+		gc->screenshot.name.len = 0;
+
+		gc->screenshot.requested = false;
+		gc->screenshot.copied = false;
+		gc->screenshot.staged = false;
+		gc->screenshot.saved = false;
+	}
+	else if (gc->screenshot.name.len) {
+		gc->screenshot.requested = true;
+	}
+	LeaveCriticalSection(&gc->screenshot.mutex);
 
 	if (gc->screenshot.copied && !gc->screenshot.staged) {
 		obs_enter_graphics();
@@ -1514,7 +1572,7 @@ static void handle_screenshot(struct game_capture *gc)
 		gc->screenshot.staged = true;
 	}
 	
-	if (!gc->screenshot.copied && gc->texture) {
+	if (!gc->screenshot.copied && gc->screenshot.requested && gc->texture) {
 		obs_enter_graphics();
 		gs_texrender_reset(gc->screenshot.copy_tex);
 		if (gs_texrender_begin(gc->screenshot.copy_tex, gc->cx, gc->cy)) {
