@@ -267,6 +267,7 @@ static void game_capture_destroy(void *data)
 
 	DeleteCriticalSection(&gc->ipc_mutex);
 
+	calldata_free(&gc->ipc_monitor_process_calldata);
 	calldata_free(&gc->ipc_inject_calldata);
 	calldata_free(&gc->inject_fail_calldata);
 	calldata_free(&gc->stop_calldata);
