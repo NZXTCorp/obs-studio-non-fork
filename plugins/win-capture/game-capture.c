@@ -1518,6 +1518,7 @@ static void handle_screenshot(struct game_capture *gc)
 		obs_enter_graphics();
 		gs_texrender_reset(gc->screenshot.copy_tex);
 		if (gs_texrender_begin(gc->screenshot.copy_tex, gc->cx, gc->cy)) {
+			gs_ortho(0.f, (float)gc->cx, 0.f, (float)gc->cy, -100.f, 100.f);
 			gs_effect_t *effect = obs_get_base_effect(OBS_EFFECT_OPAQUE);
 
 			while (gs_effect_loop(effect, "Draw")) {
