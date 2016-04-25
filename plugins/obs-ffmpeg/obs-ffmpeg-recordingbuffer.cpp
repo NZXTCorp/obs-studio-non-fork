@@ -415,6 +415,7 @@ private:
 			calldata_set_float(&data, "duration", duration);
 			signal_handler_signal(stream->signal,
 					"buffer_output_finished", &data);
+			calldata_free(&data);
 		} else {
 			os_unlink(path);
 		}
