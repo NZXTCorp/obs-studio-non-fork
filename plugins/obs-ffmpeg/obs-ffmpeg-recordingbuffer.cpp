@@ -55,6 +55,15 @@ struct default_delete<os_process_pipe_t> {
 		os_process_pipe_destroy(pipe);
 	}
 };
+
+template <>
+struct default_delete<calldata_t> {
+	void operator()(calldata_t *data)
+	{
+		calldata_free(data);
+		delete data;
+	}
+};
 }
 
 #define do_log(level, format, ...) \
@@ -177,6 +186,8 @@ struct buffer_output {
 	atomic<bool>      thread_finished{};
 	int               total_frames = 0;
 
+	unique_ptr<calldata_t> signal_data;
+
 	buffer_output(ffmpeg_muxer *stream, const char *path_,
 			video_tracked_frame_id tracked_id=0)
 		: stream(stream),
@@ -184,6 +195,11 @@ struct buffer_output {
 		  headers(stream->encoder_headers)
 	{
 		dstr_copy(path, path_);
+
+		signal_data.reset(new calldata_t{});
+		calldata_init(signal_data.get());
+		calldata_set_ptr(signal_data.get(), "output", stream->output);
+		calldata_set_string(signal_data.get(), "filename", path);
 
 		DStr escaped_path;
 		dstr_copy_dstr(escaped_path, path);
@@ -193,6 +209,8 @@ struct buffer_output {
 		if (!build_command_line(stream, escaped_path, cmd)) {
 			warn("Failed to build command line");
 			thread_finished = true;
+
+			SignalFailure();
 			return;
 		}
 
@@ -200,6 +218,8 @@ struct buffer_output {
 		if (!pipe) {
 			warn("Failed to create process pipe");
 			thread_finished = true;
+
+			SignalFailure();
 			return;
 		}
 
@@ -418,9 +438,17 @@ private:
 			calldata_free(&data);
 		} else {
 			os_unlink(path);
+
+			SignalFailure();
 		}
 
 		thread_finished = true;
+	}
+
+	void SignalFailure()
+	{
+		signal_handler_signal(stream->signal,
+				"buffer_output_failed", signal_data.get());
 	}
 };
 
@@ -476,6 +504,8 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 	signal_handler_add(signal,
 			"void buffer_output_finished(ptr output, string filename, "
 			"int frames, float duration, int start_pts)");
+	signal_handler_add(signal,
+			"void buffer_output_failed(ptr output, string filename)");
 	stream->signal = signal;
 
 	UNUSED_PARAMETER(settings);
