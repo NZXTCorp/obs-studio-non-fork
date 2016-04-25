@@ -426,16 +426,11 @@ private:
 			auto start_pts = GetStartPTS();
 			auto duration = CalculateDuration();
 
-			calldata_t data{};
-			calldata_init(&data);
-			calldata_set_ptr(&data, "output", stream->output);
-			calldata_set_string(&data, "filename", path);
-			calldata_set_int(&data, "frames", total_frames);
-			calldata_set_int(&data, "start_pts", start_pts);
-			calldata_set_float(&data, "duration", duration);
+			calldata_set_int(signal_data.get(), "frames", total_frames);
+			calldata_set_int(signal_data.get(), "start_pts", start_pts);
+			calldata_set_float(signal_data.get(), "duration", duration);
 			signal_handler_signal(stream->signal,
-					"buffer_output_finished", &data);
-			calldata_free(&data);
+					"buffer_output_finished", signal_data.get());
 		} else {
 			os_unlink(path);
 
