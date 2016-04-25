@@ -20,6 +20,7 @@
 #include <obs-avc.h>
 #include <util/dstr.hpp>
 #include <util/pipe.h>
+#include <util/platform.h>
 #include "ffmpeg-mux/ffmpeg-mux.h"
 
 #include <algorithm>
@@ -414,6 +415,8 @@ private:
 			calldata_set_float(&data, "duration", duration);
 			signal_handler_signal(stream->signal,
 					"buffer_output_finished", &data);
+		} else {
+			os_unlink(path);
 		}
 
 		thread_finished = true;
