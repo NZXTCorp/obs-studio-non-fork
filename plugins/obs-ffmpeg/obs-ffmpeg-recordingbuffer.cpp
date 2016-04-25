@@ -474,7 +474,7 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 
 	auto signal = obs_output_get_signal_handler(output);
 	signal_handler_add(signal,
-			"void buffer_output_finished(string filename, "
+			"void buffer_output_finished(ptr output, string filename, "
 			"int frames, float duration, int start_pts)");
 	stream->signal = signal;
 
