@@ -304,6 +304,8 @@ void obs_output_stop(obs_output_t *output)
 		return;
 	if (!output->context.data)
 		return;
+	if (!output->started)
+		return;
 
 	encoded = (output->info.flags & OBS_OUTPUT_ENCODED) != 0;
 
