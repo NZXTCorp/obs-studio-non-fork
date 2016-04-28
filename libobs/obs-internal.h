@@ -645,7 +645,7 @@ struct obs_output {
 	double                          stop_ts;
 
 	bool                            active;
-	volatile bool                   stopped;
+	volatile bool                   started;
 	video_t                         *video;
 	audio_t                         *audio;
 	obs_encoder_t                   *video_encoder;

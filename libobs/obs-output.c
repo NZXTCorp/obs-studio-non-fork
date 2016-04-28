@@ -182,7 +182,7 @@ bool obs_output_actual_start(obs_output_t *output)
 {
 	bool success = false;
 
-	output->stopped = false;
+	output->started = true;
 
 	if (output->context.data)
 		success = output->info.start(output->context.data);
@@ -276,7 +276,7 @@ static void log_frame_info(struct obs_output *output)
 
 void obs_output_actual_stop(obs_output_t *output, bool force)
 {
-	output->stopped = true;
+	output->started = false;
 
 	os_event_signal(output->reconnect_stop_event);
 	if (output->reconnect_thread_active)
@@ -901,7 +901,7 @@ static inline void send_interleaved(struct obs_output *output)
 		output->total_frames++;
 
 	da_erase(output->interleaved_packets, 0);
-	if (!output->stopped) {
+	if (output->started) {
 		output->info.encoded_packet(output->context.data, &out);
 
 		update_timestamps(output, &out);
@@ -1117,7 +1117,7 @@ static void default_encoded_callback(void *param, struct encoder_packet *packet)
 	if (packet->type == OBS_ENCODER_AUDIO)
 		packet->track_idx = get_track_index(output, packet);
 
-	if (!output->stopped) {
+	if (output->started) {
 		output->info.encoded_packet(output->context.data, packet);
 
 		update_timestamps(output, packet);
@@ -1132,7 +1132,7 @@ static void default_encoded_callback(void *param, struct encoder_packet *packet)
 static void default_raw_video_callback(void *param, struct video_data *frame)
 {
 	struct obs_output *output = param;
-	if (!output->stopped)
+	if (output->started)
 		output->info.raw_video(output->context.data, frame);
 	output->total_frames++;
 }
@@ -1141,7 +1141,7 @@ static void default_raw_audio_callback(void *param, size_t mix_idx,
 		struct audio_data *frames)
 {
 	struct obs_output *output = param;
-	if (!output->stopped)
+	if (output->started)
 		output->info.raw_audio(output->context.data, frames);
 
 	UNUSED_PARAMETER(mix_idx);
