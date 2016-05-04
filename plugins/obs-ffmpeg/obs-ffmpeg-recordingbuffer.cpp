@@ -482,6 +482,8 @@ static void output_precise_buffer_handler(void *data, calldata_t *calldata)
 	auto frame_id = obs_track_next_frame();
 	stream->outputs.emplace_back(
 			new buffer_output{stream, filename, frame_id});
+
+	calldata_set_int(calldata, "tracked_frame_id", frame_id);
 }
 
 static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
@@ -492,7 +494,8 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 	auto proc = obs_output_get_proc_handler(output);
 	proc_handler_add(proc, "void output_buffer(string filename)",
 			output_buffer_handler, stream);
-	proc_handler_add(proc, "void output_precise_buffer(string filename)",
+	proc_handler_add(proc, "void output_precise_buffer(string filename, "
+			"out int tracked_frame_id)",
 			output_precise_buffer_handler, stream);
 
 	auto signal = obs_output_get_signal_handler(output);
