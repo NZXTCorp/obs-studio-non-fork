@@ -429,6 +429,10 @@ private:
 			calldata_set_int(signal_data.get(), "frames", total_frames);
 			calldata_set_int(signal_data.get(), "start_pts", start_pts);
 			calldata_set_float(signal_data.get(), "duration", duration);
+
+			if (tracked_id)
+				calldata_set_int(signal_data.get(), "tracked_frame_id", tracked_id);
+
 			signal_handler_signal(stream->signal,
 					"buffer_output_finished", signal_data.get());
 		} else {
@@ -501,7 +505,7 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 	auto signal = obs_output_get_signal_handler(output);
 	signal_handler_add(signal,
 			"void buffer_output_finished(ptr output, string filename, "
-			"int frames, float duration, int start_pts)");
+			"int frames, float duration, int start_pts, int tracked_frame_id)");
 	signal_handler_add(signal,
 			"void buffer_output_failed(ptr output, string filename)");
 	stream->signal = signal;
