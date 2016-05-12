@@ -71,12 +71,14 @@ bool obs_module_load(void)
 	sts = MFXInit(impl, &ver, &session);
 
 	if (sts == MFX_ERR_NONE) {
+		blog(LOG_INFO, "QSV supported (via D3D11)");
 		obs_register_encoder(&obs_qsv_encoder);
 		MFXClose(session);
 	} else {
 		impl = MFX_IMPL_HARDWARE_ANY | MFX_IMPL_VIA_D3D9;
 		sts = MFXInit(impl, &ver, &session);
 		if (sts == MFX_ERR_NONE) {
+			blog(LOG_INFO, "QSV supported (via D3D9)");
 			obs_register_encoder(&obs_qsv_encoder);
 			MFXClose(session);
 		}
