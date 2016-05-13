@@ -417,6 +417,7 @@ static void game_capture_update(void *data, obs_data_t *settings)
 	gc->activate_hook = cfg.process_id || cfg.thread_id ||
 		(!!window && !!*window);
 	gc->retry_interval = DEFAULT_RETRY_INTERVAL;
+	gc->wait_for_target_startup = false;
 	gc->have_ipc_result = false;
 	gc->ipc_injector_active = false;
 
