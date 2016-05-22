@@ -317,6 +317,9 @@ bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 	if (!gs_stagesurface_map(surf, &data, &linesize))
 		goto err;
 
+	graphics_t *context = gs_get_context();
+	gs_leave_context();
+
 	frame->linesize[0] = linesize;
 	frame->data[0] = data;
 	frame->extended_data = frame->data;
@@ -324,6 +327,7 @@ bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 	int got_packet = 0;
 	res = avcodec_encode_video2(cctx, &packet, frame, &got_packet);
 
+	gs_enter_context(context);
 	gs_stagesurface_unmap(surf);
 
 	if (res < 0 || got_packet == 0)
