@@ -141,6 +141,8 @@ struct game_capture {
 		bool                      copied : 1;
 		bool                      staged : 1;
 		bool                      saved : 1;
+
+		HANDLE                    save_thread;
 		
 		struct calldata           calldata;
 
@@ -223,6 +225,14 @@ static void stop_capture(struct game_capture *gc)
 	if (gc->data) {
 		UnmapViewOfFile(gc->data);
 		gc->data = NULL;
+	}
+
+	while (gc->screenshot.save_thread) {
+		switch (WaitForSingleObject(gc->screenshot.save_thread, INFINITE)) {
+		case WAIT_OBJECT_0:
+		case WAIT_FAILED:
+			close_handle(&gc->screenshot.save_thread);
+		}
 	}
 
 	close_handle(&gc->keep_alive);
@@ -1566,21 +1576,32 @@ static void send_inject_failed(struct game_capture *gc, long exit_code)
 	calldata_set_ptr(&gc->inject_fail_calldata, "injector_exit_code", NULL);
 }
 
+static DWORD WINAPI screenshot_save_thread(LPVOID param)
+{
+	struct game_capture *gc = param;
+
+	obs_enter_graphics();
+	gc->screenshot.saved = gs_stagesurface_save_to_file(gc->screenshot.surf, gc->screenshot.name.array);
+	obs_leave_graphics();
+
+	return 0;
+}
+
 static void handle_screenshot(struct game_capture *gc)
 {
-	if (gc->screenshot.staged && !gc->screenshot.saved) {
-		obs_enter_graphics();
-		gs_stagesurface_save_to_file(gc->screenshot.surf, gc->screenshot.name.array);
-		obs_leave_graphics();
-		gc->screenshot.saved = true;
-	}
+	if (gc->screenshot.staged && !gc->screenshot.saved && !gc->screenshot.save_thread)
+		gc->screenshot.save_thread = CreateThread(NULL, 0, screenshot_save_thread, gc, 0, NULL);
+
+	bool thread_ready = gc->screenshot.save_thread && WaitForSingleObject(gc->screenshot.save_thread, 0) == WAIT_OBJECT_0;
 
 	EnterCriticalSection(&gc->screenshot.mutex);
-	if (gc->screenshot.saved && gc->screenshot.name.len) {
+	if (thread_ready && gc->screenshot.name.len) {
 		calldata_set_int(&gc->screenshot.calldata, "screenshot_id", gc->screenshot.id);
 		calldata_set_string(&gc->screenshot.calldata, "filename", gc->screenshot.name.array);
 
 		signal_handler_signal(gc->signals, "screenshot_saved", &gc->screenshot.calldata);
+
+		close_handle(&gc->screenshot.save_thread);
 
 		gc->screenshot.name.len = 0;
 
