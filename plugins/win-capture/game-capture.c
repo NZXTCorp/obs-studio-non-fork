@@ -1588,8 +1588,7 @@ static void handle_screenshot(struct game_capture *gc)
 		gc->screenshot.copied = false;
 		gc->screenshot.staged = false;
 		gc->screenshot.saved = false;
-	}
-	else if (gc->screenshot.name.len) {
+	} else if (gc->screenshot.name.len) {
 		gc->screenshot.requested = true;
 	}
 	LeaveCriticalSection(&gc->screenshot.mutex);
