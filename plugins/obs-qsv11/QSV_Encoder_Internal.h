@@ -111,6 +111,7 @@ private:
 	mfxBitstream                   m_outBitstream = { 0 };
 	bool                           m_bIsWindows8OrGreater = false;
 	bool                           m_bUseD3D11 = false;
+	bool                           m_bD3D9HACK = false;
 	std::pair<std::unique_ptr<mfxU8[]>, mfxBitstream> m_currentFrame;
 	std::deque<std::pair<std::unique_ptr<mfxU8[]>, mfxBitstream>> m_bufferedFrames;
 };
