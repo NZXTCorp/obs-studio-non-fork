@@ -958,7 +958,7 @@ void obs_sceneitem_set_bounds_alignment(obs_sceneitem_t *item,
 
 void obs_sceneitem_set_bounds(obs_sceneitem_t *item, const struct vec2 *bounds)
 {
-	if (item) {
+	if (item && item->parent) {
 		item->bounds = *bounds;
 		update_item_transform(item);
 	}
