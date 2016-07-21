@@ -541,7 +541,7 @@ void obs_register_source_s(const struct obs_source_info *info, size_t size)
 	}
 
 	if (find_source(array, info->id)) {
-		blog(LOG_WARNING, "Source d '%s' already exists!  "
+		blog(LOG_WARNING, "Source id '%s' already exists!  "
 		                  "Duplicate library?", info->id);
 		goto error;
 	}
