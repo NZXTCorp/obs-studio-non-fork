@@ -166,10 +166,11 @@ static inline void render_display_begin(struct obs_display *display)
 	gs_set_viewport(0, 0, display->cx, display->cy);
 }
 
-static inline void render_display_end()
+static inline void render_display_end(obs_display_t *display)
 {
 	gs_end_scene();
-	gs_present();
+	if (display->swap)
+		gs_present();
 }
 
 void render_display(struct obs_display *display)
@@ -189,7 +190,7 @@ void render_display(struct obs_display *display)
 
 	pthread_mutex_unlock(&display->draw_callbacks_mutex);
 
-	render_display_end();
+	render_display_end(display);
 }
 
 void obs_display_set_enabled(obs_display_t *display, bool enable)
