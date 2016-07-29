@@ -1647,18 +1647,6 @@ static void game_capture_tick(void *data, float seconds)
 
 	handle_screenshot(gc);
 
-	if (!obs_source_showing(gc->source)) {
-		if (gc->showing) {
-			if (gc->active)
-				stop_capture(gc);
-			gc->showing = false;
-		}
-		return;
-
-	} else if (!gc->showing) {
-		gc->retry_time = 10.0f;
-	}
-
 	if ((gc->hook_stop && object_signalled(gc->hook_stop)) ||
 		target_process_died(gc)) {
 		stop_capture(gc);
@@ -1757,9 +1745,6 @@ static void game_capture_tick(void *data, float seconds)
 			}
 		}
 	}
-
-	if (!gc->showing)
-		gc->showing = true;
 }
 
 static inline void game_capture_render_cursor(struct game_capture *gc)
