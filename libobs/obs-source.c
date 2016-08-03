@@ -814,13 +814,16 @@ void obs_source_video_tick(obs_source_t *source, float seconds)
 		uint64_t sys_time = obs->video.video_time;
 
 		pthread_mutex_lock(&source->async_mutex);
-		if (source->cur_async_frame) {
-			remove_async_frame(source, source->cur_async_frame);
-			source->cur_async_frame = NULL;
-		}
+		struct obs_source_frame *closest_frame =
+			get_closest_frame(source, sys_time);
 
-		source->cur_async_frame = get_closest_frame(source, sys_time);
-		source->last_sys_timestamp = sys_time;
+		if (closest_frame && source->cur_async_frame)
+			remove_async_frame(source, source->cur_async_frame);
+
+		if (closest_frame) {
+			source->cur_async_frame = closest_frame;
+			source->last_sys_timestamp = sys_time;
+		}
 		pthread_mutex_unlock(&source->async_mutex);
 	}
 
