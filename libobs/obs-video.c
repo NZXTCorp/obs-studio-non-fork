@@ -137,6 +137,11 @@ static inline bool render_main_texture(struct obs_core_video *video,
 
 	profile_start(render_main_texture_name);
 
+	if (!video_output_active(obs->video.video)) { // FIXME: reconsider after output cutoff is handled
+		video->textures_rendered[cur_texture] = false;
+		goto end;
+	}
+
 	struct vec4 clear_color;
 	vec4_set(&clear_color, 0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -149,6 +154,7 @@ static inline bool render_main_texture(struct obs_core_video *video,
 	video->textures_rendered[cur_texture] = true;
 	frame_rendered = true;
 
+end:
 	profile_end(render_main_texture_name);
 
 	return frame_rendered;
