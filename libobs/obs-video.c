@@ -220,8 +220,10 @@ static inline void render_output_texture(struct obs_core_video *video,
 			"base_dimension_i");
 	size_t      passes, i;
 
-	if (!video->textures_rendered[prev_texture])
+	if (!video->textures_rendered[prev_texture]) {
+		video->textures_output[cur_texture] = false;
 		goto end;
+	}
 
 	gs_set_render_target(target, NULL);
 	set_render_size(width, height);
@@ -271,8 +273,10 @@ static void render_convert_texture(struct obs_core_video *video,
 	gs_technique_t *tech    = gs_effect_get_technique(effect,
 			video->conversion_tech);
 
-	if (!video->textures_output[prev_texture])
+	if (!video->textures_output[prev_texture]) {
+		video->textures_converted[cur_texture] = false;
 		goto end;
+	}
 
 	set_eparam(effect, "u_plane_offset", (float)video->plane_offsets[1]);
 	set_eparam(effect, "v_plane_offset", (float)video->plane_offsets[2]);
@@ -328,8 +332,10 @@ static inline void stage_output_texture(struct obs_core_video *video,
 
 	unmap_last_surface(video);
 
-	if (!texture_ready)
+	if (!texture_ready) {
+		video->textures_copied[cur_texture] = false;
 		goto end;
+	}
 
 	gs_stage_texture(copy, texture);
 
