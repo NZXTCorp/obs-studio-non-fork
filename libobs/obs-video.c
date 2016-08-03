@@ -100,8 +100,6 @@ static inline void render_displays(void)
 	if (!obs->data.valid)
 		return;
 
-	gs_enter_context(obs->video.graphics);
-
 	/* render extra displays/swaps */
 	pthread_mutex_lock(&obs->data.displays_mutex);
 
@@ -112,8 +110,6 @@ static inline void render_displays(void)
 	}
 
 	pthread_mutex_unlock(&obs->data.displays_mutex);
-
-	gs_leave_context();
 }
 
 static inline void set_render_size(uint32_t width, uint32_t height)
@@ -556,38 +552,34 @@ static inline void video_sleep(struct obs_core_video *video,
 			sizeof(vframe_info));
 }
 
-static const char *output_frame_gs_context_name = "gs_context(video->graphics)";
-static const char *output_frame_render_video_name = "render_video";
-static const char *output_frame_download_frame_name = "download_frame";
-static const char *output_frame_gs_flush_name = "gs_flush";
-static const char *output_frame_output_video_data_name = "output_video_data";
-static inline void output_frame(void)
+static const char *render_frame_render_video_name = "render_video";
+static const char *render_frame_download_frame_name = "download_frame";
+static const char *render_frame_gs_flush_name = "gs_flush";
+static void render_frame(struct video_data *frame, bool *frame_ready)
 {
 	struct obs_core_video *video = &obs->video;
-	int cur_texture  = video->cur_texture;
-	int prev_texture = cur_texture == 0 ? NUM_TEXTURES-1 : cur_texture-1;
-	struct video_data frame;
-	bool frame_ready;
+	int cur_texture = video->cur_texture;
+	int prev_texture = cur_texture == 0 ? NUM_TEXTURES - 1 : cur_texture - 1;
 
-	memset(&frame, 0, sizeof(struct video_data));
+	memset(frame, 0, sizeof(struct video_data));
 
-	profile_start(output_frame_gs_context_name);
-	gs_enter_context(video->graphics);
-
-	profile_start(output_frame_render_video_name);
+	profile_start(render_frame_render_video_name);
 	render_video(video, cur_texture, prev_texture);
-	profile_end(output_frame_render_video_name);
+	profile_end(render_frame_render_video_name);
 
-	profile_start(output_frame_download_frame_name);
-	frame_ready = download_frame(video, prev_texture, &frame);
-	profile_end(output_frame_download_frame_name);
+	profile_start(render_frame_download_frame_name);
+	*frame_ready = download_frame(video, prev_texture, frame);
+	profile_end(render_frame_download_frame_name);
 
-	profile_start(output_frame_gs_flush_name);
+	profile_start(render_frame_gs_flush_name);
 	gs_flush();
-	profile_end(output_frame_gs_flush_name);
+	profile_end(render_frame_gs_flush_name);
+}
 
-	gs_leave_context();
-	profile_end(output_frame_gs_context_name);
+static const char *output_frame_output_video_data_name = "output_video_data";
+static inline void output_frame(bool frame_ready, struct video_data *frame)
+{
+	struct obs_core_video *video = &obs->video;
 
 	if (frame_ready) {
 		struct obs_vframe_info vframe_info;
@@ -596,14 +588,14 @@ static inline void output_frame(void)
 
 		pthread_mutex_lock(&video->frame_tracker_mutex);
 		if (video->tracked_frame_id) {
-			frame.tracked_id = video->tracked_frame_id;
+			frame->tracked_id = video->tracked_frame_id;
 			video->tracked_frame_id = 0;
 		}
 		pthread_mutex_unlock(&video->frame_tracker_mutex);
 
-		frame.timestamp = vframe_info.timestamp;
+		frame->timestamp = vframe_info.timestamp;
 		profile_start(output_frame_output_video_data_name);
-		output_video_data(video, &frame, vframe_info.count);
+		output_video_data(video, frame, vframe_info.count);
 		profile_end(output_frame_output_video_data_name);
 	}
 
@@ -614,12 +606,15 @@ static inline void output_frame(void)
 #define NBSP "\xC2\xA0"
 
 static const char *tick_sources_name = "tick_sources";
+static const char *gs_context_name = "gs_context(video->graphics)";
 static const char *render_displays_name = "render_displays";
+static const char *render_frame_name = "render_frame";
 static const char *output_frame_name = "output_frame";
 void *obs_video_thread(void *param)
 {
 	uint64_t last_time = 0;
 	uint64_t interval = video_output_get_frame_time(obs->video.video);
+	struct video_data frame;
 
 	obs->video.video_time = os_gettime_ns();
 
@@ -631,18 +626,30 @@ void *obs_video_thread(void *param)
 	profile_register_root(video_thread_name, interval);
 
 	while (!video_output_stopped(obs->video.video)) {
+		bool frame_ready = false;
+
 		profile_start(video_thread_name);
 
 		profile_start(tick_sources_name);
 		last_time = tick_sources(obs->video.video_time, last_time);
 		profile_end(tick_sources_name);
 
+		profile_start(gs_context_name);
+		gs_enter_context(obs->video.graphics);
+
 		profile_start(render_displays_name);
 		render_displays();
 		profile_end(render_displays_name);
 
+		profile_start(render_frame_name);
+		render_frame(&frame, &frame_ready);
+		profile_end(render_frame_name);
+
+		gs_leave_context();
+		profile_end(gs_context_name);
+
 		profile_start(output_frame_name);
-		output_frame();
+		output_frame(frame_ready, &frame);
 		profile_end(output_frame_name);
 
 		profile_end(video_thread_name);
