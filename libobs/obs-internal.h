@@ -215,6 +215,8 @@ extern void obs_display_free(struct obs_display *display);
 struct obs_vframe_info {
 	uint64_t timestamp;
 	int count;
+
+	video_tracked_frame_id tracked_id;
 };
 
 struct obs_core_video {

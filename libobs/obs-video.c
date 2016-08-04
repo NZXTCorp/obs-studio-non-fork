@@ -570,6 +570,11 @@ static inline void video_sleep(struct obs_core_video *video,
 	if (!frame_rendered)
 		return;
 
+	pthread_mutex_lock(&video->frame_tracker_mutex);
+	vframe_info.tracked_id = video->tracked_frame_id;
+	video->tracked_frame_id = 0;
+	pthread_mutex_unlock(&video->frame_tracker_mutex);
+
 	vframe_info.timestamp = cur_time;
 	vframe_info.count = count;
 	circlebuf_push_back(&video->vframe_info_buffer, &vframe_info,
@@ -610,12 +615,7 @@ static inline void output_frame(bool frame_ready, struct video_data *frame)
 		circlebuf_pop_front(&video->vframe_info_buffer, &vframe_info,
 				sizeof(vframe_info));
 
-		pthread_mutex_lock(&video->frame_tracker_mutex);
-		if (video->tracked_frame_id) {
-			frame->tracked_id = video->tracked_frame_id;
-			video->tracked_frame_id = 0;
-		}
-		pthread_mutex_unlock(&video->frame_tracker_mutex);
+		frame->tracked_id = vframe_info.tracked_id;
 
 		frame->timestamp = vframe_info.timestamp;
 		profile_start(output_frame_output_video_data_name);
