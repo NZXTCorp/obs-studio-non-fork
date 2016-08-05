@@ -648,6 +648,14 @@ struct obs_output {
 
 	bool                            active;
 	volatile bool                   started;
+	volatile bool                   stopping;
+	video_tracked_frame_id          stop_frame_id;
+	bool                            wait_for_dts;
+	int64_t                         stop_dts;
+	int64_t                         stop_pts;
+	bool                            stop_thread_initialized;
+	pthread_t                       stop_thread;
+
 	video_t                         *video;
 	audio_t                         *audio;
 	obs_encoder_t                   *video_encoder;

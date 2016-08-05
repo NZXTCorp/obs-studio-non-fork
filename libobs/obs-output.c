@@ -140,6 +140,12 @@ void obs_output_destroy(obs_output_t *output)
 
 		if (output->valid && output->active)
 			obs_output_actual_stop(output, true);
+
+		if (output->stop_thread_initialized) {
+			pthread_join(output->stop_thread, NULL);
+			output->stop_thread_initialized = false;
+		}
+
 		if (output->service)
 			output->service->output = NULL;
 
@@ -188,6 +194,11 @@ bool obs_output_actual_start(obs_output_t *output)
 		success = output->info.start(output->context.data);
 
 	if (success && output->video) {
+		if (output->stop_thread_initialized) {
+			pthread_join(output->stop_thread, NULL);
+			output->stop_thread_initialized = false;
+		}
+
 		output->starting_frame_count =
 			video_output_get_total_frames(output->video);
 		output->starting_skipped_frame_count =
@@ -296,6 +307,7 @@ void obs_output_actual_stop(obs_output_t *output, bool force)
 	}
 
 	if (force || !output->delay_active) {
+		output->stopping = false;
 		signal_stop(output, OBS_OUTPUT_SUCCESS);
 		obs_output_release(output);
 	}
@@ -304,17 +316,24 @@ void obs_output_actual_stop(obs_output_t *output, bool force)
 void obs_output_stop(obs_output_t *output)
 {
 	bool encoded;
+	bool was_started;
 	if (!obs_output_valid(output, "obs_output_stop"))
 		return;
 	if (!output->context.data)
 		return;
 	if (!output->started)
 		return;
+	if (output->stopping)
+		return;
 
 	encoded = (output->info.flags & OBS_OUTPUT_ENCODED) != 0;
+	was_started = output->received_audio && output->received_video;
 
 	if (encoded && output->active_delay_ns) {
 		obs_output_delay_stop(output);
+	} else if (encoded && was_started && output->info.flags & OBS_OUTPUT_AV) {
+		output->stop_frame_id = obs_track_next_frame();
+		output->stopping = true;
 	} else {
 		obs_output_actual_stop(output, false);
 		do_output_signal(output, "stopping");
@@ -893,6 +912,37 @@ static void update_timestamps(obs_output_t *output,
 		output->stop_ts = ts;
 }
 
+static void *defer_stop(void *data)
+{
+	obs_output_t *output = data;
+	obs_output_actual_stop(output, false);
+
+	return NULL;
+}
+
+static void handle_queued_stop(obs_output_t *output, struct encoder_packet *out)
+{
+	if (output->wait_for_dts && out->dts < output->stop_dts)
+		return;
+
+	if (output->stop_frame_id && output->stop_frame_id != out->tracked_id)
+		return;
+
+	if (output->stop_frame_id && output->stop_frame_id == out->tracked_id) {
+		output->stop_frame_id = 0;
+		if (out->dts < out->pts) {
+			output->wait_for_dts = true;
+			output->stop_dts = out->pts;
+			return;
+		}
+	}
+
+	output->started = false;
+
+	pthread_create(&output->stop_thread, NULL, defer_stop, output);
+	output->stop_thread_initialized = true;
+}
+
 static inline void send_interleaved(struct obs_output *output)
 {
 	struct encoder_packet out = output->interleaved_packets.array[0];
@@ -924,6 +974,9 @@ static inline void send_interleaved(struct obs_output *output)
 					"sent_tracked_frame", &params);
 			calldata_free(&params);
 		}
+
+		if (output->stopping && out.type == OBS_ENCODER_VIDEO)
+			handle_queued_stop(output, &out);
 	}
 
 	obs_free_encoder_packet(&out);
