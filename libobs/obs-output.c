@@ -209,6 +209,8 @@ bool obs_output_start(obs_output_t *output)
 		return false;
 	if (!output->context.data)
 		return false;
+	if (!obs_output_get_ref(output))
+		return false;
 
 	encoded = (output->info.flags & OBS_OUTPUT_ENCODED) != 0;
 
@@ -293,8 +295,10 @@ void obs_output_actual_stop(obs_output_t *output, bool force)
 		obs_output_end_data_capture(output);
 	}
 
-	if (force || !output->delay_active)
+	if (force || !output->delay_active) {
 		signal_stop(output, OBS_OUTPUT_SUCCESS);
+		obs_output_release(output);
+	}
 }
 
 void obs_output_stop(obs_output_t *output)
