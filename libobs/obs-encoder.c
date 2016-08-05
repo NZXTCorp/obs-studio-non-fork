@@ -201,6 +201,12 @@ static void remove_connection(struct obs_encoder *encoder)
 	encoder->active = false;
 }
 
+static void clear_audio_buffers(obs_encoder_t *encoder)
+{
+	for (size_t i = 0; i < MAX_AV_PLANES; i++)
+		circlebuf_clear(&encoder->audio_input_buffer[i]);
+}
+
 static inline void free_audio_buffers(struct obs_encoder *encoder)
 {
 	for (size_t i = 0; i < MAX_AV_PLANES; i++) {
@@ -404,6 +410,8 @@ void obs_encoder_shutdown(obs_encoder_t *encoder)
 	if (encoder->context.data) {
 		encoder->info.destroy(encoder->context.data);
 		encoder->context.data = NULL;
+
+		clear_audio_buffers(encoder);
 	}
 }
 
