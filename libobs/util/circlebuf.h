@@ -43,6 +43,13 @@ static inline void circlebuf_init(struct circlebuf *cb)
 	memset(cb, 0, sizeof(struct circlebuf));
 }
 
+static inline void circlebuf_clear(struct circlebuf *cb)
+{
+	cb->size = 0;
+	cb->start_pos = 0;
+	cb->end_pos = 0;
+}
+
 static inline void circlebuf_free(struct circlebuf *cb)
 {
 	bfree(cb->data);
