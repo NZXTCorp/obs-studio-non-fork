@@ -807,13 +807,12 @@ static inline int inject_library(HANDLE process, const wchar_t *dll)
 }
 
 static inline bool hook_direct(struct game_capture *gc,
-		const char *hook_path_rel)
+		const char *hook_path_rel, int *ret)
 {
 	wchar_t hook_path_abs_w[MAX_PATH];
 	wchar_t *hook_path_rel_w;
 	wchar_t *path_ret;
 	HANDLE process;
-	int ret;
 
 	os_utf8_to_wcs_ptr(hook_path_rel, 0, &hook_path_rel_w);
 	if (!hook_path_rel_w) {
@@ -836,11 +835,12 @@ static inline bool hook_direct(struct game_capture *gc,
 		return false;
 	}
 
-	ret = inject_library(process, hook_path_abs_w);
+	*ret = inject_library(process, hook_path_abs_w);
 	CloseHandle(process);
 
-	if (ret != 0) {
-		warn("hook_direct: inject failed: %d", ret);
+	if (*ret != 0) {
+		warn("hook_direct: inject failed: %d", *ret);
+		calldata_set_ptr(&gc->inject_fail_calldata, "injector_exit_code", ret);
 		return false;
 	}
 
@@ -897,6 +897,7 @@ static inline bool inject_hook(struct game_capture *gc)
 	const char *hook_dll;
 	char *inject_path;
 	char *hook_path;
+	int inject_result;
 
 	if (gc->config.allow_ipc_injector) {
 		bool anti_cheat = gc->config.anticheat_hook;
@@ -943,7 +944,7 @@ static inline bool inject_hook(struct game_capture *gc)
 
 	if (matching_architecture && !gc->config.anticheat_hook) {
 		info("using direct hook");
-		success = hook_direct(gc, hook_path);
+		success = hook_direct(gc, hook_path, &inject_result);
 	} else {
 		info("using helper (%s hook)", gc->config.anticheat_hook ?
 				"compatibility" : "direct");
@@ -956,6 +957,7 @@ cleanup:
 
 	if (!success) {
 		signal_handler_signal(gc->signals, "inject_failed", &gc->inject_fail_calldata);
+		calldata_set_ptr(&gc->inject_fail_calldata, "injector_exit_code", NULL);
 	}
 
 	return success;
