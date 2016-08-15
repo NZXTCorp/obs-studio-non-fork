@@ -149,31 +149,6 @@ int  os_sem_wait(os_sem_t *sem)
 	return (ret == WAIT_OBJECT_0) ? 0 : -1;
 }
 
-long os_atomic_inc_long(volatile long *val)
-{
-	return InterlockedIncrement(val);
-}
-
-long os_atomic_dec_long(volatile long *val)
-{
-	return InterlockedDecrement(val);
-}
-
-bool os_atomic_compare_swap_long(volatile long *val, long old_val, long new_val)
-{
-	return InterlockedCompareExchange(val, new_val, old_val) == old_val;
-}
-
-bool os_atomic_set_bool(volatile bool *ptr, bool val)
-{
-	return (bool)InterlockedExchange8((volatile char*)ptr, (char)val);
-}
-
-bool os_atomic_load_bool(const volatile bool *ptr)
-{
-	return (bool)InterlockedOr8((volatile char*)ptr, 0);
-}
-
 #define VC_EXCEPTION 0x406D1388
 
 #pragma pack(push,8)
