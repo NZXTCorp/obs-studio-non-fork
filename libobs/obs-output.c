@@ -334,6 +334,7 @@ void obs_output_stop(obs_output_t *output)
 	} else if (encoded && was_started && output->info.flags & OBS_OUTPUT_AV) {
 		output->stop_frame_id = obs_track_next_frame();
 		output->stopping = true;
+		do_output_signal(output, "stopping");
 	} else {
 		obs_output_actual_stop(output, false);
 		do_output_signal(output, "stopping");
