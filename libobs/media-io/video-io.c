@@ -32,9 +32,15 @@ extern profiler_name_store_t *obs_get_profiler_name_store(void);
 #define MAX_CONVERT_BUFFERS 3
 #define MAX_CACHE_SIZE 16
 
+struct track_duplicated_frame {
+	int count;
+	video_tracked_frame_id id;
+};
+
 struct cached_frame_info {
 	struct video_data frame;
 	int count;
+	DARRAY(struct track_duplicated_frame) tracked_ids;
 };
 
 struct video_input {
@@ -114,12 +120,17 @@ static inline bool video_output_cur_frame(struct video_output *video)
 {
 	struct cached_frame_info *frame_info;
 	bool complete;
+	struct track_duplicated_frame *track = NULL;
 
 	/* -------------------------------- */
 
 	pthread_mutex_lock(&video->data_mutex);
 
 	frame_info = &video->cache[video->first_added];
+
+	for (size_t i = 0; i < frame_info->tracked_ids.num; i++)
+		if (--frame_info->tracked_ids.array[i].count == 0)
+			track = &frame_info->tracked_ids.array[i];
 
 	pthread_mutex_unlock(&video->data_mutex);
 
@@ -131,6 +142,11 @@ static inline bool video_output_cur_frame(struct video_output *video)
 		struct video_input *input = video->inputs.array+i;
 		struct video_data frame = frame_info->frame;
 
+		if (track) {
+			frame.tracked_id = track->id;
+			blog(LOG_INFO, "video-io: Outputting (duplicated) tracked frame %lld", track->id);
+		}
+
 		if (scale_video_output(input, &frame))
 			input->callback(input->param, &frame);
 	}
@@ -140,6 +156,9 @@ static inline bool video_output_cur_frame(struct video_output *video)
 	/* -------------------------------- */
 
 	pthread_mutex_lock(&video->data_mutex);
+
+	if (track)
+		da_erase_item(frame_info->tracked_ids, track);
 
 	frame_info->frame.timestamp += video->frame_time;
 	complete = --frame_info->count == 0;
@@ -206,6 +225,7 @@ static inline void init_cache(struct video_output *video)
 
 		video_frame_init(frame, video->info.format,
 				video->info.width, video->info.height);
+		da_init(video->cache[i].tracked_ids);
 	}
 
 	video->available_frames = video->info.cache_size;
@@ -263,8 +283,10 @@ void video_output_close(video_t *video)
 		video_input_free(&video->inputs.array[i]);
 	da_free(video->inputs);
 
-	for (size_t i = 0; i < video->info.cache_size; i++)
+	for (size_t i = 0; i < video->info.cache_size; i++) {
 		video_frame_free((struct video_frame*)&video->cache[i]);
+		da_free(video->cache[i].tracked_ids);
+	}
 
 	os_sem_destroy(video->update_semaphore);
 	pthread_mutex_destroy(&video->data_mutex);
@@ -407,6 +429,15 @@ bool video_output_lock_frame(video_t *video, struct video_frame *frame,
 		video->cache[video->last_added].count += count;
 		locked = false;
 
+		if (tracked_id) {
+			struct track_duplicated_frame track = {
+				video->cache[video->last_added].count,
+				tracked_id
+			};
+			da_push_back(video->cache[video->last_added].tracked_ids, &track);
+			blog(LOG_INFO, "video-io: Tracked frame %lld will be duplicated", tracked_id);
+		}
+
 	} else {
 		if (video->available_frames != video->info.cache_size) {
 			if (++video->last_added == video->info.cache_size)
@@ -417,6 +448,8 @@ bool video_output_lock_frame(video_t *video, struct video_frame *frame,
 		cfi->frame.timestamp = timestamp;
 		cfi->count = count;
 		cfi->frame.tracked_id = tracked_id;
+
+		da_resize(cfi->tracked_ids, 0);
 
 		memcpy(frame, &cfi->frame, sizeof(*frame));
 
