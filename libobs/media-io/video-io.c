@@ -169,6 +169,9 @@ static inline bool video_output_cur_frame(struct video_output *video)
 
 		if (++video->available_frames == video->info.cache_size)
 			video->last_added = video->first_added;
+
+	} else {
+		frame_info->frame.tracked_id = 0;
 	}
 
 	pthread_mutex_unlock(&video->data_mutex);
