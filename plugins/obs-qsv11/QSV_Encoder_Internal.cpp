@@ -115,7 +115,7 @@ QSV_Encoder_Internal::QSV_Encoder_Internal(mfxIMPL& impl, mfxVersion& version) :
 		m_session.QueryVersion(&version);
 		m_session.Close();
 
-		blog(LOG_INFO, "\timpl:           D3D09\n"
+		blog(LOG_INFO, "\timpl:           D3D9\n"
 		               "\tsurf:           SysMem");
 
 		m_impl = tempImpl;
