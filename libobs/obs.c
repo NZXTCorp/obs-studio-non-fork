@@ -791,6 +791,8 @@ void obs_shutdown(void)
 	obs_free_audio();
 	proc_handler_destroy(obs->procs);
 	signal_handler_destroy(obs->signals);
+	obs->procs = NULL;
+	obs->signals = NULL;
 
 	module = obs->first_module;
 	while (module) {
