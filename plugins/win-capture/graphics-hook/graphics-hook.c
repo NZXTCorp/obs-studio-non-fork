@@ -52,7 +52,7 @@ static struct thread_data      thread_data                     = {0};
 volatile bool                  active                          = false;
 struct hook_info               *global_hook_info               = NULL;
 
-static HMODULE                 overlay_dll                     = NULL;
+HMODULE                        overlay_dll                     = NULL;
 struct overlay_info            overlay_info                    = {0};
 
 
@@ -186,7 +186,7 @@ static inline bool init_hook_info(void)
 }
 
 static void free_overlay(void);
-static void init_overlay_info(void)
+void init_overlay_info(void)
 {
 	if (!global_hook_info->overlay_dll_path[0])
 		return;

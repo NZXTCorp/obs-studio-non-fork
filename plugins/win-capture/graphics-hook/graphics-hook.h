@@ -59,7 +59,10 @@ extern bool capture_init_shmem(struct shmem_data **data, HWND window,
 		uint32_t pitch, uint32_t format, bool flip);
 extern void capture_free(void);
 
+extern void init_overlay_info(void);
+
 extern struct hook_info *global_hook_info;
+extern HMODULE overlay_dll;
 
 
 typedef bool (*overlay_init_t)(void (*hlog)(const char *fmt, ...));
@@ -231,6 +234,9 @@ static inline bool capture_should_init(void)
 		if (capture_alive()) {
 			if (!ipc_pipe_client_valid(&pipe)) {
 				init_pipe();
+			}
+			if (!overlay_dll) {
+				init_overlay_info();
 			}
 			return true;
 		}
