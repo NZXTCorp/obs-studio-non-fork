@@ -1881,7 +1881,10 @@ static bool update_shared_handles(obs_source_t *source,
 	if (!source->async_shared_handle && !frame->shared_handle)
 		return false;
 
+	pthread_mutex_unlock(&source->async_mutex); // work around deadlock
 	obs_enter_graphics();
+	pthread_mutex_lock(&source->async_mutex);
+
 	if (source->async_texture) {
 		gs_texture_destroy(source->async_texture);
 		source->async_texture = NULL;
