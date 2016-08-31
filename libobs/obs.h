@@ -233,6 +233,8 @@ struct obs_source_frame {
 
 	/* used internally by libobs */
 	volatile long       refs;
+
+	uint32_t            shared_handle;
 };
 
 /* ------------------------------------------------------------------------- */

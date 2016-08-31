@@ -541,6 +541,7 @@ struct obs_source {
 	uint32_t                        async_cache_height;
 	uint32_t                        async_convert_width;
 	uint32_t                        async_convert_height;
+	uint32_t                        async_shared_handle;
 
 	/* filters */
 	struct obs_source               *filter_parent;

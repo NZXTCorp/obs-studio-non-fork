@@ -1861,7 +1861,8 @@ static inline bool async_texture_changed(struct obs_source *source,
 
 	return source->async_cache_width  != frame->width ||
 	       source->async_cache_height != frame->height ||
-	       prev != cur;
+	       prev != cur ||
+		   source->async_shared_handle != frame->shared_handle;
 }
 
 static inline void free_async_cache(struct obs_source *source)
@@ -1872,6 +1873,30 @@ static inline void free_async_cache(struct obs_source *source)
 	da_resize(source->async_cache, 0);
 	da_resize(source->async_frames, 0);
 	source->cur_async_frame = NULL;
+}
+
+static bool update_shared_handles(obs_source_t *source,
+	const struct obs_source_frame *frame)
+{
+	if (!source->async_shared_handle && !frame->shared_handle)
+		return false;
+
+	obs_enter_graphics();
+	if (source->async_texture) {
+		gs_texture_destroy(source->async_texture);
+		source->async_texture = NULL;
+	}
+
+	if (frame->shared_handle) {
+		source->async_texture = gs_texture_open_shared(frame->shared_handle);
+		source->async_width = gs_texture_get_width(source->async_texture);
+		source->async_height = gs_texture_get_height(source->async_texture);
+		source->async_active = true;
+	}
+	obs_leave_graphics();
+
+	source->async_shared_handle = frame->shared_handle;
+	return !!source->async_texture;
 }
 
 #define MAX_UNUSED_FRAME_DURATION 5
@@ -1912,6 +1937,13 @@ static inline struct obs_source_frame *cache_video(struct obs_source *source,
 		source->async_cache_width  = frame->width;
 		source->async_cache_height = frame->height;
 		source->async_cache_format = frame->format;
+
+		update_shared_handles(source, frame);
+	}
+
+	if (source->async_shared_handle) {
+		pthread_mutex_unlock(&source->async_mutex);
+		return NULL;
 	}
 
 	for (size_t i = 0; i < source->async_cache.num; i++) {
