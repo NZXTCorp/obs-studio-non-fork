@@ -186,7 +186,7 @@ const static D3D_FEATURE_LEVEL featureLevels[] =
 
 void gs_device::InitDevice(uint32_t adapterIdx, IDXGIAdapter *adapter)
 {
-	wstring adapterName;
+	wstring adapterName = L"<unknown>";
 	DXGI_ADAPTER_DESC desc;
 	D3D_FEATURE_LEVEL levelUsed = D3D_FEATURE_LEVEL_9_3;
 	HRESULT hr = 0;
@@ -196,8 +196,11 @@ void gs_device::InitDevice(uint32_t adapterIdx, IDXGIAdapter *adapter)
 	//createFlags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
-	adapterName = (adapter->GetDesc(&desc) == S_OK) ? desc.Description :
-		L"<unknown>";
+	if (adapter->GetDesc(&desc) == S_OK) {
+		adapterName = desc.Description;
+		luid = desc.AdapterLuid;
+		luidValid = true;
+	}
 
 	char *adapterNameUTF8;
 	os_wcs_to_utf8_ptr(adapterName.c_str(), 0, &adapterNameUTF8);
@@ -2023,4 +2026,9 @@ extern "C" EXPORT gs_texture_t *device_texture_open_shared(gs_device_t *device,
 	}
 
 	return texture;
+}
+
+extern "C" EXPORT const void *device_get_luid(gs_device_t *device)
+{
+	return device->luidValid ? static_cast<void*>(&device->luid) : nullptr;
 }

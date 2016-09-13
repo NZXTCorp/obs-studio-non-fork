@@ -650,6 +650,9 @@ struct gs_device {
 	matrix4                     curViewMatrix;
 	matrix4                     curViewProjMatrix;
 
+	bool                        luidValid = false;
+	LUID                        luid;
+
 	void InitCompiler();
 	void InitFactory(uint32_t adapterIdx, IDXGIAdapter1 **adapter);
 	void InitDevice(uint32_t adapterIdx, IDXGIAdapter *adapter);
