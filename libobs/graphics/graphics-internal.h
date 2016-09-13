@@ -255,6 +255,8 @@ struct gs_exports {
 
 	gs_texture_t *(*device_texture_open_shared)(gs_device_t *device,
 				uint32_t handle);
+
+	const void *(*device_get_luid)(gs_device_t *device);
 #endif
 };
 

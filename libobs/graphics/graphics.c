@@ -2546,4 +2546,17 @@ gs_texture_t *gs_texture_open_shared(uint32_t handle)
 	return NULL;
 }
 
+const void *gs_get_device_luid(void)
+{
+	graphics_t *graphics = thread_graphics;
+	if (!gs_valid("gs_get_device_luid"))
+		return NULL;
+
+	if (!graphics->exports.device_get_luid)
+		return NULL;
+
+	return graphics->exports.device_get_luid(
+				graphics->device);
+}
+
 #endif

@@ -755,6 +755,8 @@ EXPORT void gs_texture_release_dc(gs_texture_t *gdi_tex);
 
 /** creates a windows shared texture from a texture handle */
 EXPORT gs_texture_t *gs_texture_open_shared(uint32_t handle);
+
+EXPORT const void *gs_get_device_luid(void);
 #endif
 
 /* inline functions used by modules */
