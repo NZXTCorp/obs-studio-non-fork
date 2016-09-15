@@ -10,6 +10,7 @@ extern struct obs_source_info duplicator_capture_info;
 extern struct obs_source_info monitor_capture_info;
 extern struct obs_source_info window_capture_info;
 extern struct obs_source_info game_capture_info;
+extern struct obs_source_info duplicator_window_info;
 
 extern bool cached_versions_match(void);
 extern bool load_cached_graphics_offsets(bool is32bit);
@@ -41,9 +42,10 @@ bool obs_module_load(void)
 
 	obs_enter_graphics();
 
-	if (win8_or_above && gs_get_device_type() == GS_DEVICE_DIRECT3D_11)
+	if (win8_or_above && gs_get_device_type() == GS_DEVICE_DIRECT3D_11) {
 		obs_register_source(&duplicator_capture_info);
-	else
+		obs_register_source(&duplicator_window_info);
+	} else
 		obs_register_source(&monitor_capture_info);
 
 	obs_leave_graphics();
