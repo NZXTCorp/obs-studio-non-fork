@@ -935,18 +935,21 @@ static void build_sprite(struct gs_vb_data *data, float fcx, float fcy,
 }
 
 static inline void build_sprite_norm(struct gs_vb_data *data, float fcx,
-		float fcy, uint32_t flip)
+		float fcy, uint32_t flip,
+		float left, float top, float right, float bottom)
 {
 	float start_u, end_u;
 	float start_v, end_v;
 
 	assign_sprite_uv(&start_u, &end_u, (flip & GS_FLIP_U) != 0);
 	assign_sprite_uv(&start_v, &end_v, (flip & GS_FLIP_V) != 0);
-	build_sprite(data, fcx, fcy, start_u, end_u, start_v, end_v);
+	build_sprite(data, fcx, fcy,
+		start_u + left, end_u - right, start_v + top, end_v - bottom);
 }
 
 static inline void build_sprite_rect(struct gs_vb_data *data, gs_texture_t *tex,
-		float fcx, float fcy, uint32_t flip)
+		float fcx, float fcy, uint32_t flip,
+		float left, float top, float right, float bottom)
 {
 	float start_u, end_u;
 	float start_v, end_v;
@@ -955,11 +958,18 @@ static inline void build_sprite_rect(struct gs_vb_data *data, gs_texture_t *tex,
 
 	assign_sprite_rect(&start_u, &end_u, width,  (flip & GS_FLIP_U) != 0);
 	assign_sprite_rect(&start_v, &end_v, height, (flip & GS_FLIP_V) != 0);
-	build_sprite(data, fcx, fcy, start_u, end_u, start_v, end_v);
+	build_sprite(data, fcx - right - left, fcy - bottom - top,
+		start_u + left, end_u - right, start_v + top, end_v - bottom);
 }
 
 void gs_draw_sprite(gs_texture_t *tex, uint32_t flip, uint32_t width,
 		uint32_t height)
+{
+	gs_draw_sprite_cropped(tex, flip, width, height, 0, 0, 0, 0);
+}
+
+void gs_draw_sprite_cropped(gs_texture_t *tex, uint32_t flip, uint32_t width,
+		uint32_t height, float left, float top, float right, float bottom)
 {
 	graphics_t *graphics = thread_graphics;
 	float fcx, fcy;
@@ -983,9 +993,13 @@ void gs_draw_sprite(gs_texture_t *tex, uint32_t flip, uint32_t width,
 
 	data = gs_vertexbuffer_get_data(graphics->sprite_buffer);
 	if (tex && gs_texture_is_rect(tex))
-		build_sprite_rect(data, tex, fcx, fcy, flip);
-	else
-		build_sprite_norm(data, fcx, fcy, flip);
+		build_sprite_rect(data, tex, fcx, fcy, flip, left, top, right, bottom);
+	else {
+		float width  = (float)gs_texture_get_width(tex);
+		float height = (float)gs_texture_get_height(tex);
+		build_sprite_norm(data, fcx - left - right, fcy - top - bottom, flip,
+			left / width, top / height, right / width, bottom / height);
+	}
 
 	gs_vertexbuffer_flush(graphics->sprite_buffer);
 	gs_load_vertexbuffer(graphics->sprite_buffer);

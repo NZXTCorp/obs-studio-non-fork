@@ -518,6 +518,10 @@ EXPORT bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 EXPORT void gs_draw_sprite(gs_texture_t *tex, uint32_t flip, uint32_t width,
 		uint32_t height);
 
+EXPORT void gs_draw_sprite_cropped(gs_texture_t *tex, uint32_t flip,
+		uint32_t width, uint32_t height,
+		float left, float top, float right, float bottom);
+
 EXPORT void gs_draw_cube_backdrop(gs_texture_t *cubetex, const struct quat *rot,
 		float left, float right, float top, float bottom, float znear);
 
