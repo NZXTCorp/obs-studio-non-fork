@@ -745,8 +745,11 @@ static void gl_capture(HDC hdc)
 		/* reset capture if resized */
 		get_window_size(hdc, &new_cx, &new_cy);
 		if (new_cx != data.base_cx || new_cy != data.base_cy) {
-			if (new_cx != 0 && new_cy != 0)
+			if (new_cx != 0 && new_cy != 0) {
+				int recurse = data.swap_recurse;
 				gl_free();
+				data.swap_recurse = recurse;
+			}
 			return;
 		}
 
