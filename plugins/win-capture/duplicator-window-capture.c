@@ -49,6 +49,7 @@ struct duplicator_window_capture {
 	HWND                           window;
 	RECT                           last_rect;
 	bool                           overlapped;
+	DARRAY(HWND)                   overlap_whitelist;
 };
 
 /* ------------------------------------------------------------------------- */
@@ -65,6 +66,22 @@ static inline void update_settings(struct duplicator_window_capture *capture,
 	bfree(capture->executable);
 
 	build_window_strings(window, &capture->class, &capture->title, &capture->executable);
+
+	obs_data_array_t *whitelist = obs_data_get_array(settings, "window_whitelist");
+	size_t count = obs_data_array_count(whitelist);
+	if (whitelist && count) {
+		da_resize(capture->overlap_whitelist, 0);
+		da_reserve(capture->overlap_whitelist, count);
+		for (size_t i = 0; i < count; i++) {
+			obs_data_t *data = obs_data_array_item(whitelist, i);
+			HWND wnd = (HWND)obs_data_get_int(data, "hwnd");
+			obs_data_release(data);
+
+			if (wnd)
+				da_push_back(capture->overlap_whitelist, &wnd);
+		}
+		obs_data_array_release(whitelist);
+	}
 
 	obs_enter_graphics();
 
@@ -99,6 +116,8 @@ static void duplicator_capture_destroy(void *data)
 	cursor_data_free(&capture->cursor_data);
 
 	obs_leave_graphics();
+
+	da_free(capture->overlap_whitelist);
 
 	bfree(capture->title);
 	bfree(capture->class);
@@ -190,6 +209,15 @@ static bool is_overlapped(struct duplicator_window_capture *capture)
 		if (styles & WS_CHILD)
 			continue;
 		if (rect.bottom == 0 || rect.right == 0)
+			continue;
+
+		bool whitelisted = false;
+		for (size_t i = 0; i < capture->overlap_whitelist.num; i++)
+			if (capture->overlap_whitelist.array[i] == wnd) {
+				whitelisted = true;
+				break;
+			}
+		if (whitelisted)
 			continue;
 
 		MapWindowPoints(wnd, HWND_DESKTOP, (POINT*)&rect, 2);
