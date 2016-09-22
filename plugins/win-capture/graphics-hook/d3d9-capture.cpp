@@ -96,6 +96,22 @@ static void d3d9_free()
 	hlog("----------------- d3d9 capture freed -----------------");
 }
 
+static bool luid_matches(IDXGIAdapter *adapter)
+{
+	if (!global_hook_info->luid_valid)
+		return true;
+
+	DXGI_ADAPTER_DESC desc;
+	HRESULT hr = adapter->GetDesc(&desc);
+	if (FAILED(hr)) {
+		hlog_hr("luid_matches: Failed to get adapter description", hr);
+		return true;
+	}
+
+	return desc.AdapterLuid.LowPart == global_hook_info->luid.LowPart &&
+		desc.AdapterLuid.HighPart == global_hook_info->luid.HighPart;
+}
+
 static DXGI_FORMAT d3d9_to_dxgi_format(D3DFORMAT format)
 {
 	switch ((unsigned long)format) {
@@ -163,6 +179,12 @@ static inline bool shex_init_d3d11()
 
 	if (FAILED(hr)) {
 		hlog_hr("d3d9_init: Failed to get adapter", hr);
+		return false;
+	}
+
+	if (!luid_matches(adapter)) {
+		hlog("d3d9_init: LUIDs didn't match, enabling shared memory capture");
+		global_hook_info->force_shmem = true;
 		return false;
 	}
 

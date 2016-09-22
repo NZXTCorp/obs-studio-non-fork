@@ -252,6 +252,22 @@ static inline bool gl_shtex_init_window(void)
 	return true;
 }
 
+static bool luid_matches(IDXGIAdapter *adapter)
+{
+	if (!global_hook_info->luid_valid)
+		return true;
+
+	DXGI_ADAPTER_DESC desc;
+	HRESULT hr = IDXGIAdapter1_GetDesc(adapter, &desc);
+	if (FAILED(hr)) {
+		hlog_hr("luid_matches: Failed to get adapter description", hr);
+		return true;
+	}
+
+	return desc.AdapterLuid.LowPart == global_hook_info->luid.LowPart &&
+		desc.AdapterLuid.HighPart == global_hook_info->luid.HighPart;
+}
+
 typedef HRESULT (WINAPI *create_dxgi_factory1_t)(REFIID, void **);
 
 static const D3D_FEATURE_LEVEL feature_levels[] =
@@ -321,6 +337,12 @@ static inline bool gl_shtex_init_d3d11(void)
 
 	if (FAILED(hr)) {
 		hlog_hr("gl_shtex_init_d3d11: failed to create adapter", hr);
+		return false;
+	}
+
+	if (!luid_matches(adapter)) {
+		hlog("gl_shtex_init_d3d11: LUIDs don't match, using shared memory capture");
+		global_hook_info->force_shmem = true;
 		return false;
 	}
 

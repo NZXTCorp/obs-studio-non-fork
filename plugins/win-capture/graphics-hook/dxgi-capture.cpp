@@ -25,6 +25,40 @@ struct dxgi_swap_data {
 
 static struct dxgi_swap_data data = {};
 
+static bool dxgi_check_luid(IDXGISwapChain *swap)
+{
+	if (!global_hook_info->luid_valid)
+		return true;
+
+	IDXGIDevice *device;
+	HRESULT hr = swap->GetDevice(__uuidof(IDXGIDevice), (void**)&device);
+	if (FAILED(hr)) {
+		hlog_hr("dxgi_check_luid: Failed to get IDXGIDevice", hr);
+		return true;
+	}
+
+	IDXGIAdapter *adapter;
+	hr = device->GetAdapter(&adapter);
+	device->Release();
+
+	if (FAILED(hr)) {
+		hlog_hr("dxgi_check_luid: Failed to get IDXGIAdapter", hr);
+		return true;
+	}
+
+	DXGI_ADAPTER_DESC desc;
+	hr = adapter->GetDesc(&desc);
+	adapter->Release();
+
+	if (FAILED(hr)) {
+		hlog_hr("dxgi_check_luid: Failed to get DXGI_ADAPTER_DESC", hr);
+		return true;
+	}
+
+	return desc.AdapterLuid.LowPart == global_hook_info->luid.LowPart &&
+		desc.AdapterLuid.HighPart == global_hook_info->luid.HighPart;
+}
+
 static bool setup_dxgi(IDXGISwapChain *swap)
 {
 	const char *process_name = get_process_name();
@@ -39,6 +73,11 @@ static bool setup_dxgi(IDXGISwapChain *swap)
 	    _strcmpi(process_name, "iw6mp64_ship.exe") == 0 ||
 	    _strcmpi(process_name, "justcause3.exe") == 0) {
 		ignore_d3d10 = true;
+	}
+
+	if (!dxgi_check_luid(swap)) {
+		hlog("setup_dxgi: LUIDs didn't match, using shared memory capture");
+		global_hook_info->force_shmem = true;
 	}
 
 	if (!ignore_d3d10) {
