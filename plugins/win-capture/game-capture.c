@@ -772,6 +772,11 @@ static inline bool init_hook_info(struct game_capture *gc)
 	strncpy(gc->global_hook_info->overlay_dll_path, path, MAX_PATH);
 
 	obs_enter_graphics();
+	LUID *luid = (LUID*)gs_get_device_luid();
+	gc->global_hook_info->luid_valid = !!luid;
+	if (luid)
+		gc->global_hook_info->luid = *luid;
+
 	if (!gs_shared_texture_available())
 		gc->global_hook_info->force_shmem = true;
 	obs_leave_graphics();

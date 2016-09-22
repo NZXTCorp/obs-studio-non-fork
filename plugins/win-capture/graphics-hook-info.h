@@ -97,6 +97,10 @@ struct hook_info {
 	bool                           force_shmem;
 	bool                           capture_overlay;
 
+	/* shared texture sanity check */
+	bool                           luid_valid;
+	LUID                           luid;
+
 	/* hook addresses */
 	struct graphics_offsets        offsets;
 
