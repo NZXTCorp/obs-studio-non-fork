@@ -1667,6 +1667,18 @@ static void game_capture_tick(void *data, float seconds)
 				gc->process_id);
 	}
 
+	if (gc->hook_ready && object_signalled(gc->hook_ready)) {
+		enum capture_result result = init_capture_data(gc);
+
+		if (result == CAPTURE_SUCCESS)
+			gc->capturing = start_capture(gc);
+
+		if (result != CAPTURE_RETRY && !gc->capturing) {
+			gc->retry_interval = ERROR_RETRY_INTERVAL;
+			stop_capture(gc);
+		}
+	}
+
 	if (gc->injector_process && object_signalled(gc->injector_process)) {
 		DWORD exit_code = 0;
 
@@ -1702,18 +1714,6 @@ static void game_capture_tick(void *data, float seconds)
 			send_inject_failed(gc, (long)code);
 
 		} else if (code_valid && !gc->capturing) {
-			gc->retry_interval = ERROR_RETRY_INTERVAL;
-			stop_capture(gc);
-		}
-	}
-
-	if (gc->hook_ready && object_signalled(gc->hook_ready)) {
-		enum capture_result result = init_capture_data(gc);
-
-		if (result == CAPTURE_SUCCESS)
-			gc->capturing = start_capture(gc);
-
-		if (result != CAPTURE_RETRY && !gc->capturing) {
 			gc->retry_interval = ERROR_RETRY_INTERVAL;
 			stop_capture(gc);
 		}
