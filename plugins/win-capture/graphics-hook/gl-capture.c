@@ -762,7 +762,12 @@ static void gl_capture(HDC hdc)
 			gl_init(hdc);
 		}
 	}
-	if (capture_ready() && hdc == data.hdc) {
+	if (capture_ready()) {
+		if (hdc != data.hdc) {
+			gl_free();
+			return;
+		}
+
 		uint32_t new_cx;
 		uint32_t new_cy;
 
