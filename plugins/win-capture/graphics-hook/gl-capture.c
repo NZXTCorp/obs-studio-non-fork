@@ -127,7 +127,9 @@ static void gl_free(void)
 
 	gl_error("gl_free", "GL error occurred on free");
 
+	int recurse = data.swap_recurse;
 	memset(&data, 0, sizeof(data));
+	data.swap_recurse = recurse;
 
 	hlog("------------------ gl capture freed ------------------");
 }
@@ -768,9 +770,7 @@ static void gl_capture(HDC hdc)
 		get_window_size(hdc, &new_cx, &new_cy);
 		if (new_cx != data.base_cx || new_cy != data.base_cy) {
 			if (new_cx != 0 && new_cy != 0) {
-				int recurse = data.swap_recurse;
 				gl_free();
-				data.swap_recurse = recurse;
 			}
 			return;
 		}
