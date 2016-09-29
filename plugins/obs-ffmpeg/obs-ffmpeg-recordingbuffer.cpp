@@ -45,6 +45,8 @@ extern "C" {
 #endif
 }
 
+const auto settings_buffer_length_name = "buffer_length";
+
 using namespace std;
 
 namespace std {
@@ -148,6 +150,7 @@ struct ffmpeg_muxer {
 	bool              have_headers = false;
 	bool              active = false;
 	bool              capturing = false;
+	double            buffer_length = 60.;
 
 	signal_handler_t  *signal;
 
@@ -494,6 +497,12 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 {
 	auto stream = new ffmpeg_muxer;
 	stream->output = output;
+	stream->buffer_length = obs_data_get_double(settings, settings_buffer_length_name);
+
+	if (stream->buffer_length <= 1) {
+		warn("Supplied length (%g) is less than 1 second, using 1 second instead", stream->buffer_length);
+		stream->buffer_length = 1.;
+	}
 
 	auto proc = obs_output_get_proc_handler(output);
 	proc_handler_add(proc, "void output_buffer(string filename)",
@@ -829,7 +838,7 @@ static void prune_old_segments(ffmpeg_muxer *stream)
 		return;
 
 	if (interval(*stream->payload_data.front(), *stream->current_segment)
-			- stream->current_segment->Length() < 60.) //TODO: don't hardcode this
+			- stream->current_segment->Length() < stream->buffer_length)
 		return;
 
 	stream->payload_data.pop_front();
@@ -939,6 +948,11 @@ static obs_properties_t *ffmpeg_mux_properties(void *unused)
 	return props;
 }
 
+static void ffmpeg_mux_defaults(obs_data_t *settings)
+{
+	obs_data_set_default_double(settings, settings_buffer_length_name, 60.);
+}
+
 extern "C" void register_recordingbuffer(void)
 {
 	obs_output_info ffmpeg_recordingbuffer{};
@@ -953,6 +967,7 @@ extern "C" void register_recordingbuffer(void)
 	ffmpeg_recordingbuffer.stop           = ffmpeg_mux_stop;
 	ffmpeg_recordingbuffer.encoded_packet = ffmpeg_mux_data;
 	ffmpeg_recordingbuffer.get_properties = ffmpeg_mux_properties;
+	ffmpeg_recordingbuffer.get_defaults   = ffmpeg_mux_defaults;
 
 	obs_register_output(&ffmpeg_recordingbuffer);
 };
