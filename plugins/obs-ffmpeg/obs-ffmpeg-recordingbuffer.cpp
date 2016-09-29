@@ -172,6 +172,11 @@ struct buffer_output {
 	unique_ptr<os_process_pipe_t> pipe;
 	DStr              path;
 	video_tracked_frame_id tracked_id;
+	bool              keep_recording = false;
+	double            keep_recording_time = 0.;
+
+	int64_t           end_pts;
+	bool              wait_for_end_time = false;
 	int64_t           end_dts;
 	bool              wait_for_dts = false;
 
@@ -265,14 +270,22 @@ struct buffer_output {
 		if (finish_output)
 			return false;
 
+		if (keep_recording && keep_recording_time <= 0)
+			return true;
+
 		if (pkt.type != OBS_ENCODER_VIDEO)
 			return true;
 
 		if (wait_for_dts && end_dts > pkt.dts)
 			return true;
 		else if (!wait_for_dts) {
-			if (tracked_id != pkt.tracked_id)
+			if (tracked_id != pkt.tracked_id && (!wait_for_end_time || pkt.pts < end_pts))
 				return true;
+			if (keep_recording && !wait_for_end_time) {
+				wait_for_end_time = true;
+				end_pts = pkt.pts + static_cast<int64_t>(keep_recording_time * pkt.timebase_den / pkt.timebase_num);
+				return true;
+			}
 			if (pkt.dts < pkt.pts) {
 				wait_for_dts = true;
 				end_dts = pkt.pts;
@@ -493,6 +506,24 @@ static void output_precise_buffer_handler(void *data, calldata_t *calldata)
 	calldata_set_int(calldata, "tracked_frame_id", frame_id);
 }
 
+static void output_precise_buffer_and_keep_recording_handler(
+		void *data, calldata_t *calldata)
+{
+	auto stream = static_cast<ffmpeg_muxer*>(data);
+	DStr filename;
+	dstr_copy(filename, calldata_string(calldata, "filename"));
+
+	LOCK(stream->buffer_mutex);
+	auto frame_id = obs_track_next_frame();
+	stream->outputs.emplace_back(
+			new buffer_output{stream, filename, frame_id});
+	auto &out = stream->outputs.back();
+	out->keep_recording = true;
+	out->keep_recording_time = calldata_float(calldata, "extra_recording_duration");
+
+	calldata_set_int(calldata, "tracked_frame_id", frame_id);
+}
+
 static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 {
 	auto stream = new ffmpeg_muxer;
@@ -510,6 +541,9 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 	proc_handler_add(proc, "void output_precise_buffer(string filename, "
 			"out int tracked_frame_id)",
 			output_precise_buffer_handler, stream);
+	proc_handler_add(proc, "void output_precise_buffer_and_keep_recording(string filename, "
+			"out int tracked_frame_id, float extra_recording_duration)",
+			output_precise_buffer_and_keep_recording_handler, stream);
 
 	auto signal = obs_output_get_signal_handler(output);
 	signal_handler_add(signal,
