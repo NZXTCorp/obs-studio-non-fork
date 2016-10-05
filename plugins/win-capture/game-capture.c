@@ -410,8 +410,7 @@ static void game_capture_update(void *data, obs_data_t *settings)
 			SETTING_CAPTURE_WINDOW);
 
 	get_config(&cfg, settings, window);
-	reset_capture = (cfg.thread_id && cfg.thread_id != gc->thread_id)
-		|| (cfg.process_id && cfg.process_id != gc->process_id)
+	reset_capture = (cfg.process_id && cfg.process_id != gc->process_id)
 		|| (cfg.hwnd && cfg.hwnd != gc->window)
 		|| capture_needs_reset(&cfg, &gc->config);
 
@@ -424,7 +423,7 @@ static void game_capture_update(void *data, obs_data_t *settings)
 
 	free_config(&gc->config);
 	gc->config = cfg;
-	gc->activate_hook = cfg.process_id || cfg.thread_id ||
+	gc->activate_hook = cfg.process_id ||
 		(!!window && !!*window);
 	gc->retry_interval = DEFAULT_RETRY_INTERVAL;
 	gc->wait_for_target_startup = false;
@@ -871,12 +870,6 @@ static inline bool create_inject_process(struct game_capture *gc,
 	STARTUPINFO si = {0};
 	bool success = false;
 
-	if (anti_cheat && !gc->thread_id) {
-		warn("Anti cheat was enabled with no thread id set, "
-				"trying without anti cheat");
-		anti_cheat = false;
-	}
-
 	os_utf8_to_wcs_ptr(inject_path, 0, &inject_path_w);
 	os_utf8_to_wcs_ptr(hook_dll, 0, &hook_dll_w);
 
@@ -884,8 +877,7 @@ static inline bool create_inject_process(struct game_capture *gc,
 
 	swprintf(command_line_w, 4096, L"\"%s\" \"%s\" %lu %lu",
 			inject_path_w, hook_dll_w,
-			(unsigned long)anti_cheat,
-			anti_cheat ? gc->thread_id : gc->process_id);
+			(unsigned long)anti_cheat, gc->process_id);
 
 	success = !!CreateProcessW(inject_path_w, command_line_w, NULL, NULL,
 			false, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
@@ -915,15 +907,8 @@ static inline bool inject_hook(struct game_capture *gc)
 	if (gc->config.allow_ipc_injector) {
 		bool anti_cheat = gc->config.anticheat_hook;
 
-		if (anti_cheat && !gc->thread_id) {
-			warn("Anti cheat was enabled with no thread id "
-				"set, trying without anti cheat");
-			anti_cheat = false;
-		}
-
 		update_ipc_injector_calldata(gc, gc->process_is_64bit,
-				anti_cheat,
-				anti_cheat ? gc->thread_id : gc->process_id);
+				anti_cheat, gc->process_id);
 
 		signal_handler_signal(gc->signals, "inject_request",
 				&gc->ipc_inject_calldata);
@@ -1114,8 +1099,7 @@ static void get_selected_window(struct game_capture *gc)
 
 static void try_hook(struct game_capture *gc)
 {
-	if (gc->config.thread_id || gc->config.process_id) {
-		gc->thread_id = gc->config.thread_id;
+	if (gc->config.process_id) {
 		gc->process_id = gc->config.process_id;
 		gc->next_window = gc->config.hwnd;
 

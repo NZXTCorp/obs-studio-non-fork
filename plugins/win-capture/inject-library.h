@@ -12,6 +12,9 @@
 #define INJECT_ERROR_LOADLIB_FAIL      -80
 #define INJECT_ERROR_GETPROCADDR_FAIL  -81
 #define INJECT_ERROR_WINHOOKEX_FAIL    -82
+#define INJECT_ERROR_INJECTPROC_FAIL   -83
+#define INJECT_ERROR_POSTTHREAD_FAIL   -84
+#define INJECT_ERROR_RETRIES_EXHAUSTED -85
 
 extern int inject_library_obf(HANDLE process, const wchar_t *dll,
 		const char *create_remote_thread_obf, uint64_t obf1,
@@ -20,5 +23,5 @@ extern int inject_library_obf(HANDLE process, const wchar_t *dll,
 		const char *virtual_free_ex_obf,      uint64_t obf4,
 		const char *load_library_w_obf,       uint64_t obf5);
 
-extern int inject_library_safe_obf(DWORD thread_id, const wchar_t *dll,
+extern int inject_library_safe_obf(DWORD process_id, const wchar_t *dll,
 		const char *set_windows_hook_ex_obf, uint64_t obf1);

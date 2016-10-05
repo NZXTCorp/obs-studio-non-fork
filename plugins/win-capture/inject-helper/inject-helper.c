@@ -56,9 +56,9 @@ static inline int inject_library(HANDLE process, const wchar_t *dll)
 			"DnafGhj}l~sX", 0x350bfacdf81b2018);
 }
 
-static inline int inject_library_safe(DWORD thread_id, const wchar_t *dll)
+static inline int inject_library_safe(DWORD process_id, const wchar_t *dll)
 {
-	return inject_library_safe_obf(thread_id, dll,
+	return inject_library_safe_obf(process_id, dll,
 			"[bs^fbkmwuKfmfOvI", 0xEAD293602FCF9778ULL);
 }
 

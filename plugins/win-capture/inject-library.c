@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <TlHelp32.h>
 #include "obfuscate.h"
 #include "inject-library.h"
 
@@ -122,24 +123,76 @@ fail:
 
 /* ------------------------------------------------------------------------- */
 
-typedef HHOOK (WINAPI *set_windows_hook_ex_t)(int, HOOKPROC, HINSTANCE, DWORD);
+typedef HHOOK(WINAPI *set_windows_hook_ex_t)(int, HOOKPROC, HINSTANCE, DWORD);
+
+struct safe_inject_data
+{
+	set_windows_hook_ex_t set_windows_hook_ex;
+	HMODULE lib;
+	LPVOID proc;
+	DWORD thread_id;
+	HHOOK hook;
+};
+
+static BOOL __stdcall enum_thread_windows(HWND hWnd, LPARAM lParam)
+{
+	return TRUE;
+}
+
+static bool try_inject_thread_safe(DWORD thread_id, struct safe_inject_data *inject_data)
+{
+	if (!EnumThreadWindows(thread_id, enum_thread_windows, 0))
+		return false;
+
+	inject_data->hook = inject_data->set_windows_hook_ex(WH_GETMESSAGE, inject_data->proc, inject_data->lib, thread_id);
+	if (!inject_data->hook) {
+		fprintf(stderr, "set_windows_hook_ex failed for thread id %#x: %#x\n", thread_id, GetLastError());
+		return false;
+	}
+
+	inject_data->thread_id = thread_id;
+	return true;
+}
+
+static bool try_inject_process_safe(DWORD process_id, struct safe_inject_data *inject_data)
+{
+	THREADENTRY32 te = { sizeof(te), 0 };
+	HANDLE snapshot = NULL;
+
+	snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, process_id);
+	if (!Thread32First(snapshot, &te)) {
+		fprintf(stderr, "try_inject_process_safe: failed to get threads snapshot: %#x\n", GetLastError());
+		return false;
+	}
+
+	do
+	{
+		if (te.th32OwnerProcessID != process_id)
+			continue;
+
+		if (try_inject_thread_safe(te.th32ThreadID, inject_data))
+			break;
+	} while (Thread32Next(snapshot, &te));
+
+	CloseHandle(snapshot);
+
+	return !!inject_data->hook;
+}
 
 #define RETRY_INTERVAL_MS      500
 #define TOTAL_RETRY_TIME_MS    4000
 #define RETRY_COUNT            (TOTAL_RETRY_TIME_MS / RETRY_INTERVAL_MS)
 
-int inject_library_safe_obf(DWORD thread_id, const wchar_t *dll,
+int inject_library_safe_obf(DWORD process_id, const wchar_t *dll,
 		const char *set_windows_hook_ex_obf, uint64_t obf1)
 {
 	HMODULE user32 = GetModuleHandleW(L"USER32");
-	set_windows_hook_ex_t set_windows_hook_ex;
-	HMODULE lib = LoadLibraryW(dll);
-	LPVOID proc;
-	HHOOK hook;
-	size_t i;
+	struct safe_inject_data inject_data = { 0 };
+	inject_data.lib = LoadLibraryW(dll);
+	size_t i, j = 0;
 
-	if (!lib || !user32) {
-		fprintf(stderr, "GetModuleHandleW/LoadLibraryW failed (USER32 -> %p, '%S' -> %p): %#x\n", user32, dll, lib, GetLastError());
+	if (!inject_data.lib || !user32) {
+		fprintf(stderr, "GetModuleHandleW/LoadLibraryW failed (USER32 -> %p, '%S' -> %p): %#x\n", user32, dll, inject_data.lib, GetLastError());
 		return INJECT_ERROR_LOADLIB_FAIL;
 	}
 
@@ -148,20 +201,20 @@ int inject_library_safe_obf(DWORD thread_id, const wchar_t *dll,
 #else
 #define DUMMY_PROC "_dummy_debug_proc@12"
 #endif
-	proc = GetProcAddress(lib, DUMMY_PROC);
+	inject_data.proc = GetProcAddress(inject_data.lib, DUMMY_PROC);
 
-	if (!proc) {
+	if (!inject_data.proc) {
 		fprintf(stderr, "GetProcAddress " DUMMY_PROC ": %#x\n", GetLastError());
 		return INJECT_ERROR_GETPROCADDR_FAIL;
 	}
 
-	set_windows_hook_ex = get_obfuscated_func(user32,
+	inject_data.set_windows_hook_ex = get_obfuscated_func(user32,
 			set_windows_hook_ex_obf, obf1);
 
-	hook = set_windows_hook_ex(WH_GETMESSAGE, proc, lib, thread_id);
-	if (!hook) {
-		fprintf(stderr, "set_windows_hook_ex failed: %#x\n", GetLastError());
-		return INJECT_ERROR_WINHOOKEX_FAIL;
+try_inject_process:
+	if (!try_inject_process_safe(process_id, &inject_data)) {
+		fprintf(stderr, "try_inject_process_safe failed\n");
+		return INJECT_ERROR_INJECTPROC_FAIL;
 	}
 
 	/* SetWindowsHookEx does not inject the library in to the target
@@ -173,7 +226,25 @@ int inject_library_safe_obf(DWORD thread_id, const wchar_t *dll,
 
 	for (i = 0; i < RETRY_COUNT; i++) {
 		Sleep(RETRY_INTERVAL_MS);
-		PostThreadMessage(thread_id, WM_USER + 432, 0, (LPARAM)hook);
+		if (PostThreadMessage(inject_data.thread_id, WM_USER + 432, 0, (LPARAM)inject_data.hook))
+			continue;
+
+		DWORD err = GetLastError();
+		fprintf(stderr, "PostThreadMessage failed: %#x\n", err);
+		if (err == ERROR_NOT_ENOUGH_QUOTA)
+			continue;
+
+		if (err != ERROR_INVALID_THREAD_ID)
+			return INJECT_ERROR_POSTTHREAD_FAIL;
+
+		if (j++ >= RETRY_COUNT)
+			return INJECT_ERROR_RETRIES_EXHAUSTED;
+
+		fprintf(stderr, "Retrying safe hook due to thread becoming invalid\n");
+
+		inject_data.hook = NULL;
+		inject_data.thread_id = 0;
+		goto try_inject_process;
 	}
 	return 0;
 }
