@@ -710,8 +710,12 @@ static inline bool attempt_existing_hook(struct game_capture *gc)
 {
 	gc->hook_restart = open_event_id(EVENT_CAPTURE_RESTART, gc->process_id);
 	if (gc->hook_restart) {
-		debug("existing hook found, signaling process: %s",
-				gc->config.executable);
+		if (gc->config.executable)
+			debug("existing hook found, signaling process: %s",
+					gc->config.executable);
+		else
+			debug("existing hook found, signaling process id: %d",
+					gc->process_id);
 		SetEvent(gc->hook_restart);
 		return true;
 	}
@@ -842,8 +846,12 @@ static inline bool hook_direct(struct game_capture *gc,
 
 	process = open_process(PROCESS_ALL_ACCESS, false, gc->process_id);
 	if (!process) {
-		warn("hook_direct: could not open process: %s (%lu)",
-				gc->config.executable, GetLastError());
+		if (gc->config.executable)
+			warn("hook_direct: could not open process: %s (%lu)",
+					gc->config.executable, GetLastError());
+		else
+			warn("hook_direct: could not open process id: %d (%lu)",
+					gc->process_id, GetLastError());
 		return false;
 	}
 
