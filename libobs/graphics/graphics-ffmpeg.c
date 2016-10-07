@@ -293,6 +293,8 @@ bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 	cctx->pix_fmt = format;
 	cctx->height = gs_stagesurface_get_height(surf);
 	cctx->width = gs_stagesurface_get_width(surf);
+	cctx->time_base.den = 1;
+	cctx->time_base.num = 1;
 
 	int res = 0;
 	if ((res = avcodec_open2(cctx, codec, NULL)) < 0) {
