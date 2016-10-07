@@ -298,7 +298,7 @@ bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 
 	int res = 0;
 	if ((res = avcodec_open2(cctx, codec, NULL)) < 0) {
-		blog(LOG_WARNING, "%s", av_err2str(res));
+		blog(LOG_WARNING, "gs_stagesurface_save_to_file: avcodec_open2(cctx, codec, NULL) -> %s (%d)", av_err2str(res), res);
 		goto err;
 	}
 
