@@ -81,16 +81,34 @@ void obs_display_free(obs_display_t *display)
 	}
 }
 
-void obs_display_destroy(obs_display_t *display)
+static bool remove_from_display_list(obs_display_t *display)
 {
-	if (display) {
-		pthread_mutex_lock(&obs->data.displays_mutex);
+	if (!obs)
+		return false;
+
+	bool result = false;
+
+	pthread_mutex_lock(&obs->data.displays_mutex);
+	for (obs_display_t *dis = obs->data.first_display; dis; dis = dis->next) {
+		if (dis != display)
+			continue;
+
 		if (display->prev_next)
 			*display->prev_next = display->next;
 		if (display->next)
 			display->next->prev_next = display->prev_next;
-		pthread_mutex_unlock(&obs->data.displays_mutex);
 
+		result = true;
+		break;
+	}
+	pthread_mutex_unlock(&obs->data.displays_mutex);
+
+	return result;
+}
+
+void obs_display_destroy(obs_display_t *display)
+{
+	if (display && remove_from_display_list(display)) {
 		obs_enter_graphics();
 		obs_display_free(display);
 		obs_leave_graphics();
