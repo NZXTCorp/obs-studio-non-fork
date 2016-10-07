@@ -1515,9 +1515,12 @@ static inline bool init_shtex_capture(struct game_capture *gc)
 	gc->texture = gs_texture_open_shared(gc->shtex_data->tex_handle);
 
 	gs_stagesurface_destroy(gc->screenshot.surf);
-	gc->screenshot.surf = gs_stagesurface_create(gs_texture_get_width(gc->texture),
-		gs_texture_get_height(gc->texture),
-		GS_RGBA);
+	if (gc->texture)
+		gc->screenshot.surf = gs_stagesurface_create(
+				gs_texture_get_width(gc->texture),
+				gs_texture_get_height(gc->texture), GS_RGBA);
+	else
+		gc->screenshot.surf = NULL;
 	obs_leave_graphics();
 
 	if (!gc->texture) {
