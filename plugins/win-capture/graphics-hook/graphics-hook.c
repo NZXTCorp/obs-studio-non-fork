@@ -55,6 +55,15 @@ struct hook_info               *global_hook_info               = NULL;
 HMODULE                        overlay_dll                     = NULL;
 struct overlay_info            overlay_info                    = {0};
 
+static bool                    log_buffer_enabled              = false;
+static INIT_ONCE               log_buffer_cs_init              = INIT_ONCE_STATIC_INIT;
+static CRITICAL_SECTION        log_buffer_cs                   = {0};
+static char                    *log_buffer                     = NULL;
+static size_t                  log_buffer_size                 = 0;
+static char                    *log_buffer_write               = NULL;
+static char                    *log_buffer_write_reset         = NULL;
+static size_t                  log_buffer_dropped_messages     = 0;
+
 
 static inline void wait_for_dll_main_finish(HANDLE thread_handle)
 {
@@ -72,6 +81,24 @@ bool init_pipe(void)
 	if (!ipc_pipe_client_open(&pipe, new_name)) {
 		DbgOut("Failed to open pipe\n");
 		return false;
+	}
+
+	if (log_buffer_enabled && TryEnterCriticalSection(&log_buffer_cs)) {
+		if (log_buffer_write_reset != log_buffer_write) {
+			if (!ipc_pipe_client_write(&pipe, log_buffer, log_buffer_write - log_buffer + 1)) {
+				LeaveCriticalSection(&log_buffer_cs);
+				return false;
+			}
+
+			log_buffer_write = log_buffer_write_reset;
+		}
+
+		if (log_buffer_dropped_messages) {
+			hlog("%d messages were dropped", log_buffer_dropped_messages);
+			log_buffer_dropped_messages = 0;
+		}
+
+		LeaveCriticalSection(&log_buffer_cs);
 	}
 
 	return true;
@@ -468,6 +495,61 @@ static DWORD WINAPI main_capture_thread(HANDLE thread_handle)
 	return 0;
 }
 
+static const char log_buffer_intro[] = "Replaying buffered messages:";
+#define LOG_BUFFER_INTRO_LENGTH (sizeof(log_buffer_intro) / sizeof(char));
+
+static void append_log(const char *message, size_t chars)
+{
+	if (!chars || !log_buffer_enabled)
+		return;
+
+	EnterCriticalSection(&log_buffer_cs);
+
+	bool write_intro = !log_buffer;
+
+	if (!log_buffer || (log_buffer_size - (log_buffer_write - log_buffer)) < chars) {
+		size_t size_needed = chars;
+		if (write_intro)
+			size_needed += LOG_BUFFER_INTRO_LENGTH;
+
+		size_t new_size = max(log_buffer_size * 2, log_buffer_size + size_needed);
+		new_size = min(10 * 1024 * 1024, new_size);
+
+		if (new_size <= log_buffer_size) {
+			log_buffer_dropped_messages += 1;
+			goto leave;
+		}
+
+		char *new_buffer = realloc(log_buffer, new_size);
+		if (!new_buffer) {
+			log_buffer_dropped_messages += 1;
+			goto leave;
+		}
+
+		log_buffer_size = new_size;
+		if (new_buffer != log_buffer) {
+			log_buffer_write = log_buffer_write - log_buffer + new_buffer;
+			log_buffer_write_reset = log_buffer_write_reset - log_buffer + new_buffer;
+			log_buffer = new_buffer;
+		}
+	}
+
+	if (write_intro) {
+		strcpy(log_buffer, log_buffer_intro);
+		log_buffer_write_reset = log_buffer + LOG_BUFFER_INTRO_LENGTH;
+		log_buffer_write_reset -= 1;
+		log_buffer_write = log_buffer_write_reset;
+	}
+
+	*log_buffer_write++ = '\n';
+
+	memmove(log_buffer_write, message, chars);
+	log_buffer_write += (chars - 1);
+
+leave:
+	LeaveCriticalSection(&log_buffer_cs);
+}
+
 static inline void hlogv(const char *format, va_list args)
 {
 	char message[1024] = "";
@@ -475,6 +557,7 @@ static inline void hlogv(const char *format, va_list args)
 	if (num) {
 		if (!ipc_pipe_client_write(&pipe, message, num + 1)) {
 			ipc_pipe_client_free(&pipe);
+			append_log(message, num + 1);
 		}
 		DbgOut(message);
 		DbgOut("\n");
@@ -848,6 +931,16 @@ void capture_free(void)
 		overlay_info.reset();
 }
 
+BOOL CALLBACK init_critical_section(INIT_ONCE *init_once, VOID *parameter, VOID **context)
+{
+	(void)init_once;
+	(void)parameter;
+	(void)context;
+
+	InitializeCriticalSection(&log_buffer_cs);
+	return true;
+}
+
 BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, LPVOID unused1)
 {
 	if (reason == DLL_PROCESS_ATTACH) {
@@ -862,6 +955,10 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, LPVOID unused1)
 		 * by the next FreeLibrary call */
 		GetModuleFileNameW(hinst, name, MAX_PATH);
 		LoadLibraryW(name);
+
+		if (InitOnceExecuteOnce(&log_buffer_cs_init, init_critical_section, NULL, NULL))
+			log_buffer_enabled = true;
+
 
 		capture_thread = CreateThread(NULL, 0,
 				(LPTHREAD_START_ROUTINE)main_capture_thread,
