@@ -271,9 +271,11 @@ try_inject_process:
 
 	for (i = 0; i < RETRY_COUNT; i++) {
 		Sleep(RETRY_INTERVAL_MS);
-		for (k = 0; k < inject_data.num_threads; k++) {
-			if (PostThreadMessage(inject_data.thread_id[k], WM_USER + 432, 0, (LPARAM)inject_data.hook[k]))
+		for (k = 0; k < inject_data.num_threads;) {
+			if (PostThreadMessage(inject_data.thread_id[k], WM_USER + 432, 0, (LPARAM)inject_data.hook[k])) {
+				k++;
 				continue;
+			}
 
 			DWORD err = GetLastError();
 			fprintf(stderr, "PostThreadMessage failed: %#x\n", err);
@@ -281,10 +283,17 @@ try_inject_process:
 			if (err != ERROR_INVALID_THREAD_ID && err != ERROR_NOT_ENOUGH_QUOTA)
 				return INJECT_ERROR_POSTTHREAD_FAIL;
 
+			if (inject_data.num_threads > 1) {
+				inject_data.num_threads -= 1;
+				inject_data.thread_id[k] = inject_data.thread_id[inject_data.num_threads];
+				inject_data.hook[k] = inject_data.hook[inject_data.num_threads];
+				continue;
+			}
+
 			if (j++ >= RETRY_COUNT)
 				return INJECT_ERROR_RETRIES_EXHAUSTED;
 
-			fprintf(stderr, "Retrying safe hook due to thread becoming invalid\n");
+			fprintf(stderr, "Retrying safe hook due to all threads becoming invalid\n");
 
 			inject_data.num_threads = 0;
 			goto try_inject_process;
