@@ -645,6 +645,8 @@ static inline bool is_64bit_process(HANDLE process)
 	return !x86;
 }
 
+static inline bool target_process_died(struct game_capture *gc);
+
 static inline bool open_target_process(struct game_capture *gc)
 {
 	gc->target_process = open_process(
@@ -675,7 +677,7 @@ static inline bool open_target_process(struct game_capture *gc)
 	}
 
 	gc->process_is_64bit = is_64bit_process(gc->target_process);
-	return true;
+	return !target_process_died(gc);
 }
 
 static inline bool init_keepalive(struct game_capture *gc)
