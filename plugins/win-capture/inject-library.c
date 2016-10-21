@@ -15,6 +15,37 @@ typedef BOOL (WINAPI *virtual_free_ex_t)(HANDLE, LPVOID, SIZE_T, DWORD);
 typedef VOID (WINAPI *get_system_time_as_file_time_t)(LPFILETIME);
 
 
+static bool check_library_loaded(DWORD process_id, const wchar_t *dll)
+{
+	MODULEENTRY32 me = { sizeof(me), 0 };
+	HANDLE snapshot = NULL;
+
+	snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, process_id);
+	if (!Module32First(snapshot, &me)) {
+		fprintf(stderr, "check_library_loaded: Failed to load module snapshot\n");
+		return false;
+	}
+
+	bool result = false;
+	do {
+		if (me.th32ProcessID != process_id)
+			continue;
+
+		if (_wcsicmp(dll, me.szExePath) != 0)
+			continue;
+
+		fprintf(stderr, "check_library_loaded: Module is already loaded");
+		result = true;
+		break;
+	} while (Module32Next(snapshot, &me));
+
+	CloseHandle(snapshot);
+
+	return result;
+}
+
+/* ------------------------------------------------------------------------- */
+
 int inject_library_obf(HANDLE process, const wchar_t *dll,
 		const char *create_remote_thread_obf, uint64_t obf1,
 		const char *write_process_memory_obf, uint64_t obf2,
@@ -32,6 +63,9 @@ int inject_library_obf(HANDLE process, const wchar_t *dll,
 	void *mem;
 
 	/* -------------------------------- */
+
+	if (check_library_loaded(GetProcessId(process), dll))
+		return 0;
 
 	HMODULE kernel32 = GetModuleHandleW(L"KERNEL32");
 	create_remote_thread_t create_remote_thread;
@@ -198,6 +232,9 @@ int inject_library_safe_obf(DWORD process_id, const wchar_t *dll,
 	struct safe_inject_data inject_data = { 0 };
 	inject_data.lib = LoadLibraryW(dll);
 	size_t i, j = 0, k;
+
+	if (check_library_loaded(process_id, dll))
+		return 0;
 
 	if (!inject_data.lib || !user32) {
 		fprintf(stderr, "GetModuleHandleW/LoadLibraryW failed (USER32 -> %p, '%S' -> %p): %#x\n", user32, dll, inject_data.lib, GetLastError());
