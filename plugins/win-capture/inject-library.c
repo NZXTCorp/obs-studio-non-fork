@@ -232,6 +232,7 @@ int inject_library_safe_obf(DWORD process_id, const wchar_t *dll,
 	struct safe_inject_data inject_data = { 0 };
 	inject_data.lib = LoadLibraryW(dll);
 	size_t i, j = 0, k;
+	size_t thread_messages_posted = 0;
 
 	if (check_library_loaded(process_id, dll))
 		return 0;
@@ -274,6 +275,7 @@ try_inject_process:
 		for (k = 0; k < inject_data.num_threads;) {
 			if (PostThreadMessage(inject_data.thread_id[k], WM_USER + 432, 0, (LPARAM)inject_data.hook[k])) {
 				k++;
+				thread_messages_posted += 1;
 				continue;
 			}
 
@@ -291,7 +293,7 @@ try_inject_process:
 			}
 
 			if (j++ >= RETRY_COUNT)
-				return INJECT_ERROR_RETRIES_EXHAUSTED;
+				return thread_messages_posted < 5 ? INJECT_ERROR_RETRIES_EXHAUSTED : 0;
 
 			fprintf(stderr, "Retrying safe hook due to all threads becoming invalid\n");
 
