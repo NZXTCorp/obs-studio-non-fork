@@ -280,12 +280,14 @@ try_inject_process:
 			}
 
 			DWORD err = GetLastError();
-			fprintf(stderr, "PostThreadMessage failed: %#x\n", err);
 
-			if (err != ERROR_INVALID_THREAD_ID && err != ERROR_NOT_ENOUGH_QUOTA)
+			if (err != ERROR_INVALID_THREAD_ID && err != ERROR_NOT_ENOUGH_QUOTA) {
+				fprintf(stderr, "PostThreadMessage(%#x) failed: %#x\n", inject_data.thread_id[k], err);
 				return INJECT_ERROR_POSTTHREAD_FAIL;
+			}
 
 			if (inject_data.num_threads > 1) {
+				fprintf(stderr, "Removing thread %#x (%#x)\n", inject_data.thread_id[k], err);
 				inject_data.num_threads -= 1;
 				inject_data.thread_id[k] = inject_data.thread_id[inject_data.num_threads];
 				inject_data.hook[k] = inject_data.hook[inject_data.num_threads];
