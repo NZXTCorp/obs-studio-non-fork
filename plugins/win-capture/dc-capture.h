@@ -26,6 +26,7 @@ struct dc_capture {
 	CURSORINFO   ci;
 
 	bool         valid;
+	bool         dc_error_logged;
 };
 
 extern void dc_capture_init(struct dc_capture *capture, int x, int y,

@@ -155,10 +155,16 @@ void dc_capture_capture(struct dc_capture *capture, HWND window)
 
 	hdc = dc_capture_get_dc(capture);
 	if (!hdc) {
-		blog(LOG_WARNING, "[capture_screen] Failed to get "
-		                  "texture DC");
+		if (!capture->dc_error_logged) {
+			blog(LOG_WARNING, "[capture_screen] Failed to get "
+			                  "texture DC");
+			capture->dc_error_logged = true;
+		}
 		return;
 	}
+
+	if (capture->dc_error_logged)
+		capture->dc_error_logged = false;
 
 	hdc_target = GetDC(window);
 
