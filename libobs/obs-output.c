@@ -226,15 +226,19 @@ bool obs_output_start(obs_output_t *output)
 	encoded = (output->info.flags & OBS_OUTPUT_ENCODED) != 0;
 
 	if (encoded && output->delay_sec) {
-		return obs_output_delay_start(output);
+		if (obs_output_delay_start(output))
+			return true;
+
 	} else {
 		if (obs_output_actual_start(output)) {
 			do_output_signal(output, "starting");
 			return true;
 		}
-
-		return false;
 	}
+
+	obs_output_release(output);
+
+	return false;
 }
 
 static void log_frame_info(struct obs_output *output)
