@@ -421,6 +421,9 @@ static void game_capture_update(void *data, obs_data_t *settings)
 		gc->error_acquiring = false;
 	}
 
+	if (!cfg.process_id || cfg.process_id != gc->process_id)
+		gc->monitored_process_died = false;
+
 	free_config(&gc->config);
 	gc->config = cfg;
 	gc->activate_hook = cfg.process_id ||
