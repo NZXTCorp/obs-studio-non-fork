@@ -106,6 +106,7 @@ struct game_capture {
 	bool                          showing : 1;
 	bool                          active : 1;
 	bool                          capturing : 1;
+	bool                          did_capture : 1;
 	bool                          activate_hook : 1;
 	bool                          process_is_64bit : 1;
 	bool                          ipc_injector_active : 1;
@@ -211,6 +212,8 @@ static inline HANDLE open_process(DWORD desired_access, bool inherit_handle,
 	return open_process_proc(desired_access, inherit_handle, process_id);
 }
 
+static inline bool target_process_died(struct game_capture *gc);
+
 static void stop_capture(struct game_capture *gc)
 {
 	ipc_pipe_server_free(&gc->pipe);
@@ -242,7 +245,6 @@ static void stop_capture(struct game_capture *gc)
 	close_handle(&gc->hook_exit);
 	close_handle(&gc->hook_data_map);
 	close_handle(&gc->global_hook_info_map);
-	close_handle(&gc->target_process);
 	close_handle(&gc->texture_mutexes[0]);
 	close_handle(&gc->texture_mutexes[1]);
 
@@ -255,8 +257,16 @@ static void stop_capture(struct game_capture *gc)
 		gc->screenshot.surf = NULL;
 	}
 
-	if (gc->capturing)
+
+	EnterCriticalSection(&gc->ipc_mutex);
+	bool ipc_process_died = gc->monitored_process_died;
+	LeaveCriticalSection(&gc->ipc_mutex);
+
+	if (gc->did_capture && target_process_died(gc)) {
 		signal_handler_signal(gc->signals, "stop_capture", &gc->stop_calldata);
+		gc->did_capture = false;
+		close_handle(&gc->target_process);
+	}
 
 	gc->copy_texture = NULL;
 	gc->wait_for_target_startup = false;
@@ -278,6 +288,7 @@ static void game_capture_destroy(void *data)
 {
 	struct game_capture *gc = data;
 	stop_capture(gc);
+	close_handle(&gc->target_process);
 
 	obs_enter_graphics();
 	cursor_data_free(&gc->cursor_data);
@@ -432,6 +443,9 @@ static void game_capture_update(void *data, obs_data_t *settings)
 	gc->wait_for_target_startup = false;
 	gc->have_ipc_result = false;
 	gc->ipc_injector_active = false;
+
+	if (reset_capture || !cfg.process_id)
+		close_handle(&gc->target_process);
 
 	if (!gc->initial_config) {
 		if (reset_capture) {
@@ -648,10 +662,11 @@ static inline bool is_64bit_process(HANDLE process)
 	return !x86;
 }
 
-static inline bool target_process_died(struct game_capture *gc);
-
 static inline bool open_target_process(struct game_capture *gc)
 {
+	if (gc->target_process)
+		goto check_alive;
+
 	gc->target_process = open_process(
 			PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | SYNCHRONIZE,
 			false, gc->process_id);
@@ -680,6 +695,8 @@ static inline bool open_target_process(struct game_capture *gc)
 	}
 
 	gc->process_is_64bit = is_64bit_process(gc->target_process);
+
+check_alive:
 	return !target_process_died(gc);
 }
 
@@ -1675,8 +1692,10 @@ static void game_capture_tick(void *data, float seconds)
 	if (gc->hook_ready && object_signalled(gc->hook_ready)) {
 		enum capture_result result = init_capture_data(gc);
 
-		if (result == CAPTURE_SUCCESS)
+		if (result == CAPTURE_SUCCESS) {
 			gc->capturing = start_capture(gc);
+			gc->did_capture = gc->did_capture || gc->capturing;
+		}
 
 		if (result != CAPTURE_RETRY && !gc->capturing) {
 			gc->retry_interval = ERROR_RETRY_INTERVAL;
