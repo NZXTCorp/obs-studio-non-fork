@@ -8,9 +8,8 @@ include(ObsHelpers)
 include(ObsCpack)
 
 if(MSVC AND NOT EXISTS "${CMAKE_BINARY_DIR}/ALL_BUILD.vcxproj.user")
-	file(GENERATE
-		OUTPUT "${CMAKE_BINARY_DIR}/ALL_BUILD.vcxproj.user"
-		INPUT "${CMAKE_SOURCE_DIR}/cmake/ALL_BUILD.vcxproj.user.in")
+	configure_file("${CMAKE_SOURCE_DIR}/cmake/ALL_BUILD.vcxproj.user.in"
+		"${CMAKE_BINARY_DIR}/ALL_BUILD.vcxproj.user")
 endif()
 
 if(NOT CMAKE_BUILD_TYPE)
