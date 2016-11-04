@@ -4,6 +4,8 @@ project(obs-studio)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 
+SET(RUNDIR_PATH "${CMAKE_BINARY_DIR}/rundir" CACHE PATH "rundir directory")
+
 include(ObsHelpers)
 include(ObsCpack)
 
