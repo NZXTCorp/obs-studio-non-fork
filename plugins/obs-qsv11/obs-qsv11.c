@@ -85,11 +85,8 @@ struct obs_qsv {
 
 	DARRAY(uint8_t)        packet_data;
 
-	uint8_t                *extra_data;
-	uint8_t                *sei;
-
-	size_t                 extra_data_size;
-	size_t                 sei_size;
+	DARRAY(uint8_t)        extra_data;
+	DARRAY(uint8_t)        sei;
 
 	os_performance_token_t *performance_token;
 };
@@ -115,12 +112,7 @@ static void clear_data(struct obs_qsv *obsqsv)
 {
 	if (obsqsv->context) {
 		qsv_encoder_close(obsqsv->context);
-		// bfree(obsqsv->sei);
-		bfree(obsqsv->extra_data);
-
 		obsqsv->context = NULL;
-		// obsqsv->sei = NULL;
-		obsqsv->extra_data = NULL;
 	}
 }
 
@@ -132,6 +124,8 @@ static void obs_qsv_destroy(void *data)
 		os_end_high_performance(obsqsv->performance_token);
 		clear_data(obsqsv);
 		da_free(obsqsv->packet_data);
+		da_free(obsqsv->extra_data);
+		da_free(obsqsv->sei);
 		bfree(obsqsv);
 	}
 }
@@ -399,27 +393,15 @@ static bool update_settings(struct obs_qsv *obsqsv, obs_data_t *settings)
 
 static void load_headers(struct obs_qsv *obsqsv)
 {
-	DARRAY(uint8_t) header;
-	uint8_t sei = 0;
-
-	// Not sure if SEI is needed.
-	// Just filling in empty meaningless SEI message.
-	// Seems to work fine.
-	// DARRAY(uint8_t) sei;
-
-	da_init(header);
-	// da_init(sei);
+	da_resize(obsqsv->extra_data, 0);
 
 	uint8_t *pSPS, *pPPS;
 	uint16_t nSPS, nPPS;
 	qsv_encoder_headers(obsqsv->context, &pSPS, &pPPS, &nSPS, &nPPS);
-	da_push_back_array(header, pSPS, nSPS);
-	da_push_back_array(header, pPPS, nPPS);
 
-	obsqsv->extra_data = header.array;
-	obsqsv->extra_data_size = header.num;
-	obsqsv->sei = &sei;
-	obsqsv->sei_size = 1;
+	da_reserve(obsqsv->extra_data, nSPS + nPPS);
+	da_push_back_array(obsqsv->extra_data, pSPS, nSPS);
+	da_push_back_array(obsqsv->extra_data, pPPS, nPPS);
 }
 
 static bool obs_qsv_update(void *data, obs_data_t *settings)
@@ -507,8 +489,8 @@ static bool obs_qsv_extra_data(void *data, uint8_t **extra_data, size_t *size)
 	if (!obsqsv->context)
 		return false;
 
-	*extra_data = obsqsv->extra_data;
-	*size = obsqsv->extra_data_size;
+	*extra_data = obsqsv->extra_data.array;
+	*size = obsqsv->extra_data.num;
 	return true;
 }
 
@@ -519,12 +501,8 @@ static bool obs_qsv_sei(void *data, uint8_t **sei,size_t *size)
 	if (!obsqsv->context)
 		return false;
 
-	/* (Jim) Unused */
-	UNUSED_PARAMETER(sei);
-	UNUSED_PARAMETER(size);
-
-	*sei = obsqsv->sei;
-	*size = obsqsv->sei_size;
+	*sei = obsqsv->sei.array;
+	*size = obsqsv->sei.num;
 	return true;
 }
 
