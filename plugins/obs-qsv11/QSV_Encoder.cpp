@@ -60,8 +60,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "QSV_Encoder.h"
 #include "QSV_Encoder_Internal.h"
 #include <obs-module.h>
+#include <atomic>
 #include <string>
-#include <mutex>
 
 #define do_log(level, format, ...) \
 	blog(level, "[qsv encoder: '%s'] " format, \
@@ -69,7 +69,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mfxIMPL              impl = MFX_IMPL_HARDWARE_ANY;
 mfxVersion           ver = {{0, 1}}; // for backward compatibility
-std::mutex           active_mutex;
+std::atomic<bool>    active = false;
 
 void qsv_encoder_version(unsigned short *major, unsigned short *minor)
 {
@@ -79,7 +79,8 @@ void qsv_encoder_version(unsigned short *major, unsigned short *minor)
 
 qsv_t *qsv_encoder_open(qsv_param_t *pParams)
 {
-	if (!active_mutex.try_lock()) {
+	bool expected = false;
+	if (!active.compare_exchange_strong(expected, true)) {
 		do_log(LOG_ERROR, "Cannot have more than one encoder "
 				"active at a time");
 		return NULL;
@@ -90,7 +91,7 @@ qsv_t *qsv_encoder_open(qsv_param_t *pParams)
 	if (sts != MFX_ERR_NONE) {
 		delete pEncoder;
 		if (pEncoder)
-			active_mutex.unlock();
+			active = false;
 		return NULL;
 	}
 
@@ -131,7 +132,7 @@ int qsv_encoder_close(qsv_t *pContext)
 	delete pEncoder;
 
 	if (pEncoder)
-		active_mutex.unlock();
+		active = false;
 
 	return 0;
 }
