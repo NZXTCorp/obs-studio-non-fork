@@ -261,6 +261,10 @@ static obs_properties_t *obs_qsv_props(void *unused)
 	obs_properties_add_int(props, "icq_quality", TEXT_ICQ_QUALITY, 1, 51, 1);
 	obs_properties_add_int(props, "la_depth", TEXT_LA_DEPTH, 10, 100, 1);
 
+	bool resolution_limited = qsv_get_cpu_platform() <= QSV_CPU_PLATFORM_IVB;
+	obs_property_set_visible(obs_properties_add_int(props, "max_width", "max width (resolution)", 4, resolution_limited ? 1920 : (int)(USHRT_MAX & ~3), 4), false);
+	obs_property_set_visible(obs_properties_add_int(props, "max_height", "max height (resolution)", 2, resolution_limited ? 1200 : (int)(USHRT_MAX & ~1), 2), false);
+
 	return props;
 }
 
