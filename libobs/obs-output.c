@@ -925,6 +925,20 @@ static void *defer_stop(void *data)
 	return NULL;
 }
 
+static void begin_queued_stop(obs_output_t *output)
+{
+	if (!output->started)
+		return;
+
+	if (output->stop_thread_initialized)
+		return;
+
+	output->started = false;
+
+	pthread_create(&output->stop_thread, NULL, defer_stop, output);
+	output->stop_thread_initialized = true;
+}
+
 static void handle_queued_stop(obs_output_t *output, struct encoder_packet *out)
 {
 	if (output->wait_for_dts && out->dts < output->stop_dts)
@@ -942,10 +956,7 @@ static void handle_queued_stop(obs_output_t *output, struct encoder_packet *out)
 		}
 	}
 
-	output->started = false;
-
-	pthread_create(&output->stop_thread, NULL, defer_stop, output);
-	output->stop_thread_initialized = true;
+	begin_queued_stop(output);
 }
 
 static inline void send_interleaved(struct obs_output *output)
