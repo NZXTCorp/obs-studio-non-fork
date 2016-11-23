@@ -241,6 +241,8 @@ bool obs_output_start(obs_output_t *output)
 	return false;
 }
 
+#define MICRO_SIGN "\xC2\xB5"
+
 static void log_frame_info(struct obs_output *output)
 {
 	struct obs_core_video *video = &obs->video;
@@ -289,6 +291,16 @@ static void log_frame_info(struct obs_output *output)
 				"%d (%0.1f%%)",
 				output->context.name,
 				dropped, percentage_dropped);
+
+	if (output->queue_length_usec_on_timeout) {
+		blog(LOG_INFO, "Output '%s': %" PRId64 " " MICRO_SIGN "s left in queue on timeout "
+			"(stop frame%s in queue)",
+			output->context.name,
+			output->queue_length_usec_on_timeout,
+			output->stop_frame_queued ? "" : " not");
+		output->queue_length_usec_on_timeout = 0;
+		output->stop_frame_queued = false;
+	}
 }
 
 void obs_output_actual_stop(obs_output_t *output, bool force)
@@ -319,9 +331,14 @@ void obs_output_actual_stop(obs_output_t *output, bool force)
 
 void obs_output_stop(obs_output_t *output)
 {
+	obs_output_stop_with_timeout(output, 0);
+}
+
+void obs_output_stop_with_timeout(obs_output_t *output, uint64_t timeout_ms)
+{
 	bool encoded;
 	bool was_started;
-	if (!obs_output_valid(output, "obs_output_stop"))
+	if (!obs_output_valid(output, "obs_output_stop_with_timeout"))
 		return;
 	if (!output->context.data)
 		return;
@@ -336,6 +353,10 @@ void obs_output_stop(obs_output_t *output)
 	if (encoded && output->active_delay_ns) {
 		obs_output_delay_stop(output);
 	} else if (encoded && was_started && output->info.flags & OBS_OUTPUT_AV) {
+		uint64_t sys_time = os_gettime_ns();
+		output->hard_stop_system_time = sys_time + timeout_ms * 1000 * 1000;
+		if (output->hard_stop_system_time <= sys_time)
+			output->hard_stop_system_time = UINT64_MAX;
 		output->stop_frame_id = obs_track_next_frame();
 		output->stopping = true;
 		do_output_signal(output, "stopping");
@@ -939,6 +960,29 @@ static void begin_queued_stop(obs_output_t *output)
 	output->stop_thread_initialized = true;
 }
 
+static bool handle_stop_timeout(obs_output_t *output, struct encoder_packet *out)
+{
+	if (!output->hard_stop_system_time)
+		return false;
+
+	if (output->hard_stop_system_time > os_gettime_ns())
+		return false;
+
+	size_t i = 0;
+	for (; i < output->interleaved_packets.num - 1; i++)
+		if (output->interleaved_packets.array[i].tracked_id == output->stop_frame_id) {
+			output->stop_frame_queued = true;
+			break;
+		}
+
+	struct encoder_packet *tracked_or_end = &output->interleaved_packets.array[i];
+	output->queue_length_usec_on_timeout = tracked_or_end->dts_usec - out->dts_usec;
+
+	output->hard_stop_system_time = 0;
+	begin_queued_stop(output);
+	return true;
+}
+
 static void handle_queued_stop(obs_output_t *output, struct encoder_packet *out)
 {
 	if (output->wait_for_dts && out->dts < output->stop_dts)
@@ -962,6 +1006,9 @@ static void handle_queued_stop(obs_output_t *output, struct encoder_packet *out)
 static inline void send_interleaved(struct obs_output *output)
 {
 	struct encoder_packet out = output->interleaved_packets.array[0];
+
+	if (handle_stop_timeout(output, &out))
+		return;
 
 	/* do not send an interleaved packet if there's no packet of the
 	 * opposing type of a higher timstamp in the interleave buffer.

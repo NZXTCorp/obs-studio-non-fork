@@ -1151,6 +1151,8 @@ EXPORT bool obs_output_start(obs_output_t *output);
 /** Stops the output. */
 EXPORT void obs_output_stop(obs_output_t *output);
 
+EXPORT void obs_output_stop_with_timeout(obs_output_t *output, uint64_t timeout_ms);
+
 /**
  * On reconnection, start where it left of on reconnection.  Note however that
  * this option will consume extra memory to continually increase delay while

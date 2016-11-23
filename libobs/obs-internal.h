@@ -643,6 +643,9 @@ struct obs_output {
 	uint32_t                        starting_frame_count;
 	uint32_t                        starting_skipped_frame_count;
 
+	int64_t                         queue_length_usec_on_timeout;
+	bool                            stop_frame_queued;
+
 	int                             total_frames;
 	double                          start_ts;
 	double                          stop_ts;
@@ -650,6 +653,7 @@ struct obs_output {
 	bool                            active;
 	volatile bool                   started;
 	volatile bool                   stopping;
+	uint64_t                        hard_stop_system_time;
 	video_tracked_frame_id          stop_frame_id;
 	bool                            wait_for_dts;
 	int64_t                         stop_dts;
