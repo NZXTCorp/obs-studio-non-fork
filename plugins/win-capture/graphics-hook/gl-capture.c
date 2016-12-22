@@ -893,9 +893,12 @@ static bool gl_register_window(void)
 	wc.lpszClassName = DUMMY_WINDOW_CLASS_NAME;
 
 	if (!RegisterClassW(&wc)) {
-		hlog("gl_register_window: failed to register window class: %d",
+		DWORD error = GetLastError();
+		if (error != ERROR_CLASS_ALREADY_EXISTS) {
+			hlog("gl_register_window: failed to register window class: %d",
 				GetLastError());
-		return false;
+			return false;
+		}
 	}
 
 	return true;
@@ -903,6 +906,8 @@ static bool gl_register_window(void)
 
 bool hook_gl(void)
 {
+	static bool hooked = false;
+
 	void *wgl_dc_proc;
 	void *wgl_slb_proc;
 	void *wgl_sb_proc;
@@ -913,8 +918,13 @@ bool hook_gl(void)
 	}
 
 	if (!gl_register_window()) {
-		return true;
+		return false;
 	}
+
+	if (hooked)
+		return true;
+
+	hooked = true;
 
 	wgl_dc_proc = base_get_proc("wglDeleteContext");
 	wgl_slb_proc = base_get_proc("wglSwapLayerBuffers");
