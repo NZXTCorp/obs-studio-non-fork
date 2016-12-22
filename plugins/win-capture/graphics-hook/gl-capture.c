@@ -15,7 +15,9 @@
 #include "graphics-hook.h"
 #include "../funchook.h"
 
-#define DUMMY_WINDOW_CLASS_NAME L"graphics_hook_gl_dummy_window"
+#define WIDEN_LITERAL_(x) L ## x
+#define WIDEN_LITERAL(x) WIDEN_LITERAL_(x)
+#define DUMMY_WINDOW_CLASS_NAME L"graphics_hook_gl_dummy_window" WIDEN_LITERAL(HOOK_SUFFIX)
 
 static const GUID GUID_IDXGIFactory1 =
 {0x770aae78, 0xf26f, 0x4dba, {0xa8, 0x29, 0x25, 0x3c, 0x83, 0xd1, 0xb3, 0x87}};
