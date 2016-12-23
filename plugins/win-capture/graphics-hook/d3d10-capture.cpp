@@ -797,7 +797,7 @@ static inline void d3d10_shmem_capture(ID3D10Resource *backbuffer)
 	data.cur_tex = next_tex;
 }
 
-void d3d10_capture(void *swap_ptr, void *backbuffer_ptr)
+void d3d10_capture(void *swap_ptr, void *backbuffer_ptr, bool)
 {
 	static bool d3d10_capture_call_logged = false;
 	if (!d3d10_capture_call_logged) {

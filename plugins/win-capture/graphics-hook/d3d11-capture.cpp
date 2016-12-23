@@ -855,7 +855,7 @@ static inline void d3d11_shmem_capture(ID3D11Resource *backbuffer)
 	data.cur_tex = next_tex;
 }
 
-void d3d11_capture(void *swap_ptr, void *backbuffer_ptr)
+void d3d11_capture(void *swap_ptr, void *backbuffer_ptr, bool)
 {
 	static bool d3d11_capture_call_logged = false;
 	if (!d3d11_capture_call_logged) {

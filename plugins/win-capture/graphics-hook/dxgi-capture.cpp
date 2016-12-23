@@ -37,7 +37,7 @@ static struct {
 
 struct dxgi_swap_data {
 	IDXGISwapChain *swap;
-	void (*capture)(void*, void*);
+	void (*capture)(void*, void*, bool);
 	void (*free)(void);
 
 	void (*draw)(void*);
@@ -250,7 +250,7 @@ static HRESULT STDMETHODCALLTYPE hook_present(IDXGISwapChain *swap,
 		backbuffer = get_dxgi_backbuffer(swap);
 
 		if (!!backbuffer) {
-			data.capture(swap, backbuffer);
+			data.capture(swap, backbuffer, capture_overlay);
 			backbuffer->Release();
 		}
 	}
@@ -278,7 +278,7 @@ static HRESULT STDMETHODCALLTYPE hook_present(IDXGISwapChain *swap,
 			backbuffer = get_dxgi_backbuffer(swap);
 
 			if (!!backbuffer) {
-				data.capture(swap, backbuffer);
+				data.capture(swap, backbuffer, capture_overlay);
 				backbuffer->Release();
 			}
 		}
