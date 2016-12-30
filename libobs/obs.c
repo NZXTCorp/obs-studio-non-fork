@@ -739,7 +739,7 @@ bool obs_startup(const char *locale, const char *module_config_path,
 	}
 
 #ifdef _WIN32
-	initialize_crash_handler();
+	//initialize_crash_handler();
 	initialize_com();
 #endif
 
