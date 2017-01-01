@@ -555,7 +555,8 @@ static inline HRESULT get_backbuffer(IDirect3DDevice9 *device,
 	static bool checked_exceptions = false;
 
 	if (!checked_exceptions) {
-		if (_strcmpi(get_process_name(), "hotd_ng.exe") == 0)
+		if (_strcmpi(get_process_name(), "hotd_ng.exe") == 0 ||
+			_strcmpi(get_process_name(), "crosscode-beta.exe") == 0)
 			use_backbuffer = true;
 		checked_exceptions = true;
 	}
