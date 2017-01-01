@@ -422,6 +422,9 @@ static bool d3d9_get_swap_desc(D3DPRESENT_PARAMETERS &pp)
 	return true;
 }
 
+static inline HRESULT get_backbuffer(IDirect3DDevice9 *device,
+		IDirect3DSurface9 **surface);
+
 static bool d3d9_init_format_backbuffer(uint32_t &cx, uint32_t &cy,
 		HWND &window)
 {
@@ -434,7 +437,7 @@ static bool d3d9_init_format_backbuffer(uint32_t &cx, uint32_t &cy,
 		return false;
 	}
 
-	hr = data.device->GetRenderTarget(0, &back_buffer);
+	hr = get_backbuffer(data.device, &back_buffer);
 	if (FAILED(hr)) {
 		return false;
 	}
