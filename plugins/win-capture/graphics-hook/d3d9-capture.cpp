@@ -399,19 +399,24 @@ static bool d3d9_shmem_init(uint32_t cx, uint32_t cy, HWND window)
 	return true;
 }
 
-static bool d3d9_get_swap_desc(D3DPRESENT_PARAMETERS &pp)
+static bool d3d9_get_swap_desc(D3DPRESENT_PARAMETERS &pp,
+		IDirect3DSwapChain9 *swap)
 {
-	IDirect3DSwapChain9 *swap = nullptr;
 	HRESULT hr;
+	bool release_swap = false;
 
-	hr = data.device->GetSwapChain(0, &swap);
-	if (FAILED(hr)) {
-		hlog_hr("d3d9_get_swap_desc: Failed to get swap chain", hr);
-		return false;
+	if (!swap) {
+		hr = data.device->GetSwapChain(0, &swap);
+		if (FAILED(hr)) {
+			hlog_hr("d3d9_get_swap_desc: Failed to get swap chain", hr);
+			return false;
+		}
+		release_swap = true;
 	}
 
 	hr = swap->GetPresentParameters(&pp);
-	swap->Release();
+	if (release_swap)
+		swap->Release();
 
 	if (FAILED(hr)) {
 		hlog_hr("d3d9_get_swap_desc: Failed to get "
@@ -423,21 +428,23 @@ static bool d3d9_get_swap_desc(D3DPRESENT_PARAMETERS &pp)
 }
 
 static inline HRESULT get_backbuffer(IDirect3DDevice9 *device,
+		IDirect3DSwapChain9 *swap,
 		IDirect3DSurface9 **surface);
 
 static bool d3d9_init_format_backbuffer(uint32_t &cx, uint32_t &cy,
-		HWND &window)
+		HWND &window,
+		IDirect3DSwapChain9 *swap, HWND override_window)
 {
 	IDirect3DSurface9 *back_buffer = nullptr;
 	D3DPRESENT_PARAMETERS pp;
 	D3DSURFACE_DESC desc;
 	HRESULT hr;
 
-	if (!d3d9_get_swap_desc(pp)) {
+	if (!d3d9_get_swap_desc(pp, swap)) {
 		return false;
 	}
 
-	hr = get_backbuffer(data.device, &back_buffer);
+	hr = get_backbuffer(data.device, swap, &back_buffer);
 	if (FAILED(hr)) {
 		return false;
 	}
@@ -454,7 +461,7 @@ static bool d3d9_init_format_backbuffer(uint32_t &cx, uint32_t &cy,
 	data.d3d9_format = desc.Format;
 	data.dxgi_format = d3d9_to_dxgi_format(desc.Format);
 	data.using_scale = global_hook_info->use_scale;
-	window = pp.hDeviceWindow;
+	window = override_window ? override_window : pp.hDeviceWindow;
 	cx = desc.Width;
 	cy = desc.Height;
 
@@ -469,18 +476,19 @@ static bool d3d9_init_format_backbuffer(uint32_t &cx, uint32_t &cy,
 	return true;
 }
 
-static bool d3d9_init_format_swapchain(uint32_t &cx, uint32_t &cy, HWND &window)
+static bool d3d9_init_format_swapchain(uint32_t &cx, uint32_t &cy, HWND &window,
+		IDirect3DSwapChain9 *swap, HWND override_window)
 {
 	D3DPRESENT_PARAMETERS pp;
 
-	if (!d3d9_get_swap_desc(pp)) {
+	if (!d3d9_get_swap_desc(pp, swap)) {
 		return false;
 	}
 
 	data.dxgi_format = d3d9_to_dxgi_format(pp.BackBufferFormat);
 	data.d3d9_format = pp.BackBufferFormat;
 	data.using_scale = global_hook_info->use_scale;
-	window = pp.hDeviceWindow;
+	window = override_window ? override_window :pp.hDeviceWindow;
 	cx = pp.BackBufferWidth;
 	cy = pp.BackBufferHeight;
 
@@ -495,7 +503,8 @@ static bool d3d9_init_format_swapchain(uint32_t &cx, uint32_t &cy, HWND &window)
 	return true;
 }
 
-static void d3d9_init(IDirect3DDevice9 *device)
+static void d3d9_init(IDirect3DDevice9 *device,
+		IDirect3DSwapChain9 *swap, HWND override_window)
 {
 	IDirect3DDevice9Ex *d3d9ex = nullptr;
 	bool has_d3d9ex_bool_offset =
@@ -521,8 +530,8 @@ static void d3d9_init(IDirect3DDevice9 *device)
 		data.patch = -1;
 	}
 
-	if (!d3d9_init_format_backbuffer(cx, cy, window)) {
-		if (!d3d9_init_format_swapchain(cx, cy, window)) {
+	if (!d3d9_init_format_backbuffer(cx, cy, window, swap, override_window)) {
+		if (!d3d9_init_format_swapchain(cx, cy, window, swap, override_window)) {
 			return;
 		}
 	}
@@ -539,6 +548,7 @@ static void d3d9_init(IDirect3DDevice9 *device)
 }
 
 static inline HRESULT get_backbuffer(IDirect3DDevice9 *device,
+		IDirect3DSwapChain9 *swap,
 		IDirect3DSurface9 **surface)
 {
 	static bool use_backbuffer = false;
@@ -551,8 +561,10 @@ static inline HRESULT get_backbuffer(IDirect3DDevice9 *device,
 	}
 
 	if (use_backbuffer) {
-		return device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO,
-				surface);
+		return swap ?
+				swap->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, surface) :
+				device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO,
+					surface);
 	} else {
 		return device->GetRenderTarget(0, surface);
 	}
@@ -643,13 +655,14 @@ static inline void d3d9_shmem_capture(IDirect3DSurface9 *backbuffer)
 }
 
 static void d3d9_capture(IDirect3DDevice9 *device,
-		IDirect3DSurface9 *backbuffer)
+		IDirect3DSurface9 *backbuffer,
+		IDirect3DSwapChain9 *swap, HWND override_window)
 {
 	if (capture_should_stop()) {
 		d3d9_free();
 	}
 	if (capture_should_init()) {
-		d3d9_init(device);
+		d3d9_init(device, swap, override_window);
 	}
 	if (capture_ready()) {
 		if (data.device != device) {
@@ -668,19 +681,20 @@ static void d3d9_capture(IDirect3DDevice9 *device,
 static int present_recurse = 0;
 
 static inline void present_begin(IDirect3DDevice9 *device,
-		IDirect3DSurface9 *&backbuffer)
+		IDirect3DSurface9 *&backbuffer,
+		IDirect3DSwapChain9 *swap, HWND override_window)
 {
 	HRESULT hr;
 
 	if (!present_recurse) {
-		hr = get_backbuffer(device, &backbuffer);
+		hr = get_backbuffer(device, swap, &backbuffer);
 		if (FAILED(hr)) {
 			hlog_hr("d3d9_shmem_capture: Failed to get "
 				"backbuffer", hr);
 		}
 
 		if (!global_hook_info->capture_overlay) {
-			d3d9_capture(device, backbuffer);
+			d3d9_capture(device, backbuffer, swap, override_window);
 		}
 
 		if (overlay_info.draw_d3d9)
@@ -692,14 +706,15 @@ static inline void present_begin(IDirect3DDevice9 *device,
 }
 
 static inline void present_end(IDirect3DDevice9 *device,
-		IDirect3DSurface9 *backbuffer)
+		IDirect3DSurface9 *backbuffer,
+		IDirect3DSwapChain9 *swap, HWND override_window)
 {
 	present_recurse--;
 
 	if (!present_recurse) {
 		if (global_hook_info->capture_overlay) {
 			if (!present_recurse)
-				d3d9_capture(device, backbuffer);
+				d3d9_capture(device, backbuffer, swap, override_window);
 		}
 
 		if (backbuffer)
@@ -720,14 +735,14 @@ static HRESULT STDMETHODCALLTYPE hook_present(IDirect3DDevice9 *device,
 	if (!hooked_reset)
 		setup_reset_hooks(device);
 
-	present_begin(device, backbuffer);
+	present_begin(device, backbuffer, nullptr, override_window);
 
 	unhook(&present);
 	present_t call = (present_t)present.call_addr;
 	hr = call(device, src_rect, dst_rect, override_window, dirty_region);
 	rehook(&present);
 
-	present_end(device, backbuffer);
+	present_end(device, backbuffer, nullptr, override_window);
 
 	return hr;
 }
@@ -742,7 +757,7 @@ static HRESULT STDMETHODCALLTYPE hook_present_ex(IDirect3DDevice9 *device,
 	if (!hooked_reset)
 		setup_reset_hooks(device);
 
-	present_begin(device, backbuffer);
+	present_begin(device, backbuffer, nullptr, override_window);
 
 	unhook(&present_ex);
 	present_ex_t call = (present_ex_t)present_ex.call_addr;
@@ -750,7 +765,7 @@ static HRESULT STDMETHODCALLTYPE hook_present_ex(IDirect3DDevice9 *device,
 			flags);
 	rehook(&present_ex);
 
-	present_end(device, backbuffer);
+	present_end(device, backbuffer, nullptr, override_window);
 
 	return hr;
 }
@@ -774,7 +789,7 @@ static HRESULT STDMETHODCALLTYPE hook_present_swap(IDirect3DSwapChain9 *swap,
 		if (!hooked_reset)
 			setup_reset_hooks(device);
 
-		present_begin(device, backbuffer);
+		present_begin(device, backbuffer, swap, override_window);
 	}
 
 	unhook(&present_swap);
@@ -784,7 +799,7 @@ static HRESULT STDMETHODCALLTYPE hook_present_swap(IDirect3DSwapChain9 *swap,
 	rehook(&present_swap);
 
 	if (device)
-		present_end(device, backbuffer);
+		present_end(device, backbuffer, swap, override_window);
 
 	return hr;
 }
