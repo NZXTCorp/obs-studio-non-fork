@@ -414,60 +414,30 @@ static inline bool attempt_hook(void)
 	static bool dxgi_hooked  = false;
 	static bool gl_hooked    = false;
 
-	if (!d3d9_hooked) {
-		if (!d3d9_hookable()) {
-			d3d9_hooked = true;
-		} else {
-			d3d9_hooked = hook_d3d9();
-			if (d3d9_hooked) {
-				return true;
-			}
-		}
+	if (!d3d9_hooked && d3d9_hookable()) {
+		d3d9_hooked = hook_d3d9();
 	}
 
-	if (!dxgi_hooked) {
-		if (!dxgi_hookable()) {
-			dxgi_hooked = true;
-		} else {
-			dxgi_hooked = hook_dxgi();
-			if (dxgi_hooked) {
-				return true;
-			}
-		}
+	if (!dxgi_hooked && dxgi_hookable()) {
+		dxgi_hooked = hook_dxgi();
 	}
 
 	if (!gl_hooked) {
 		gl_hooked = hook_gl();
-		if (gl_hooked) {
-			return true;
-		}
 	/*} else {
 		rehook_gl();*/
 	}
 
-	if (!d3d8_hooked) {
-		if (!d3d8_hookable()) {
-			d3d8_hooked = true;
-		} else {
-			d3d8_hooked = hook_d3d8();
-			if (d3d8_hooked) {
-				return true;
-			}
-		}
+	if (!d3d8_hooked && d3d8_hookable()) {
+		d3d8_hooked = hook_d3d8();
 	}
 
-	/*if (!ddraw_hooked) {
-		if (!ddraw_hookable()) {
-			ddraw_hooked = true;
-		} else {
-			ddraw_hooked = hook_ddraw();
-			if (ddraw_hooked) {
-				return true;
-			}
-		}
+	/*if (!ddraw_hooked && ddraw_hookable()) {
+		ddraw_hooked = hook_ddraw();
 	}*/
 
-	return false;
+	return d3d8_hooked || d3d9_hooked ||
+		dxgi_hooked || gl_hooked;
 }
 
 static inline void capture_loop(void)
