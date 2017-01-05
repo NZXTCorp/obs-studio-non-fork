@@ -718,7 +718,8 @@ static inline void present_begin(IDirect3DDevice9 *device,
 		}
 
 		if (overlay_info.draw_d3d9)
-			overlay_info.draw_d3d9(static_cast<void*>(device));
+			overlay_info.draw_d3d9(static_cast<void*>(device), static_cast<void*>(backbuffer),
+				static_cast<void*>(swap), override_window, src_rect);
 
 	}
 

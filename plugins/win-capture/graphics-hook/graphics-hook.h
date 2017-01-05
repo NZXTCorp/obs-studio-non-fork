@@ -78,7 +78,10 @@ typedef void (*overlay_reset_t)(void);
 typedef void (*overlay_compile_dxgi_shaders_t)(/*pD3DCompile*/void(*)(void));
 //typedef void (*overlay_draw_ddraw_t)(void);
 typedef void (*overlay_draw_d3d8_t)(void /*IDirect3DDevice8*/ *);
-typedef void (*overlay_draw_d3d9_t)(void /*IDirect3DDevice9*/ *);
+typedef void (*overlay_draw_d3d9_t)(void /*IDirect3DDevice9*/ *,
+		void /*IDirect3DSurface9*/ *backbuffer,
+		void /*IDirect3DSwapChain9*/ *swap, HWND override_window,
+		const RECT *src_rect);
 typedef void (*overlay_draw_d3d10_t)(void /*IDXGISwapChain*/ *);
 typedef void (*overlay_draw_d3d11_t)(void /*IDXGISwapChain*/ *);
 typedef void (*overlay_draw_gl_t)(HDC);
