@@ -866,9 +866,11 @@ static inline bool hook_direct(struct game_capture *gc,
 		if (gc->config.executable)
 			warn("hook_direct: could not open process: %s (%lu)",
 					gc->config.executable, GetLastError());
-		else
+		else {
 			warn("hook_direct: could not open process id: %d (%lu)",
-					gc->process_id, GetLastError());
+				gc->process_id, GetLastError());
+			gc->error_acquiring = true;
+		}
 		return false;
 	}
 
