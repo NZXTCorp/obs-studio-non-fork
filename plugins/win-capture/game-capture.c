@@ -671,11 +671,6 @@ static inline bool open_target_process(struct game_capture *gc)
 			PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | SYNCHRONIZE,
 			false, gc->process_id);
 	if (!gc->target_process) {
-		if (!gc->config.allow_ipc_injector) {
-			warn("could not open process: %s", gc->config.executable);
-			return false;
-		}
-
 		info("process '%ld' inaccessible for direct hook", (long)gc->process_id);
 
 		gc->target_process = open_process(PROCESS_QUERY_LIMITED_INFORMATION |
