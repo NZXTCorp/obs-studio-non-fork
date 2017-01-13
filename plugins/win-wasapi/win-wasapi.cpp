@@ -255,7 +255,7 @@ void WASAPISource::DefaultDeviceChanged(EDataFlow flow, ERole role, const wchar_
 			return;
 	}	
 
-	if (default_device_id.compare(new_device) != 0) {
+	if (!new_device || default_device_id.compare(new_device) != 0) {
 		blog(LOG_INFO, "[wasapi] DefaultDeviceChanged: %#x flow=%d role=%d, restarting", notify.Get(), flow, role);
 		/* rate limit to one change per 250ms like chromium does */
 		uint64_t thisUpdate = os_gettime_ns();
