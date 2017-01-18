@@ -104,6 +104,9 @@ struct audio_output {
 
 	bool                       initialized;
 
+	bool                       catching_up;
+	uint64_t                   catchup_start_time;
+
 	pthread_mutex_t            line_mutex;
 	struct audio_line          *first_line;
 
@@ -157,7 +160,7 @@ static int64_t ts_diff_bytes(const audio_t *audio, uint64_t ts1, uint64_t ts2)
 
 /* unless the value is 3+ hours worth of frames, this won't overflow */
 static inline uint64_t conv_frames_to_time(const audio_t *audio,
-		uint32_t frames)
+		uint64_t frames)
 {
 	return (uint64_t)frames * 1000000000ULL /
 		(uint64_t)audio->info.samples_per_sec;
@@ -344,13 +347,36 @@ static inline void clamp_audio_output(struct audio_output *audio, size_t bytes)
 	}
 }
 
+#define MAX_MIX_BYTES 5 * 1024 * 1024
+
 static uint64_t mix_and_output(struct audio_output *audio, uint64_t audio_time,
 		uint64_t prev_time)
 {
 	struct audio_line *line = audio->first_line;
-	uint32_t frames = (uint32_t)ts_diff_frames(audio, audio_time,
-	                                           prev_time);
-	size_t bytes = frames * audio->block_size;
+	uint64_t frames = ts_diff_frames(audio, audio_time, prev_time);
+	uint64_t total_bytes = frames * audio->block_size;
+	size_t bytes = (size_t)min_uint64(total_bytes,
+		MAX_MIX_BYTES / audio->block_size * audio->block_size);
+
+	if (total_bytes > bytes) {
+		if (!audio->catching_up) {
+			audio->catchup_start_time = os_gettime_ns();
+			audio->catching_up = true;
+			blog(LOG_INFO, "audio thread started recovering from a long pause, "
+				"%llu old frames (%g seconds) to process, %llu frames per call",
+				frames, (audio_time - prev_time) / 1000. / 1000 / 1000,
+				(uint64_t)bytes / audio->block_size);
+		}
+
+	} else {
+		if (audio->catching_up) {
+			audio->catching_up = false;
+			blog(LOG_INFO, "audio thread recovered from a long pause in %g seconds",
+				(os_gettime_ns() - audio->catchup_start_time) / 1000. / 1000 / 1000);
+		}
+	}
+
+	frames = bytes / audio->block_size;
 
 #ifdef DEBUG_AUDIO
 	blog(LOG_DEBUG, "audio_time: %llu, prev_time: %llu, bytes: %lu",
@@ -410,7 +436,7 @@ static uint64_t mix_and_output(struct audio_output *audio, uint64_t audio_time,
 
 	/* output */
 	for (size_t i = 0; i < MAX_AUDIO_MIXES; i++)
-		do_audio_output(audio, i, prev_time, frames);
+		do_audio_output(audio, i, prev_time, (uint32_t)frames);
 
 	return audio_time;
 }
