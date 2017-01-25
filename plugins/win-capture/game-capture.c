@@ -567,10 +567,6 @@ static void *game_capture_create(obs_data_t *settings, obs_source_t *source)
 			                                    "out int screenshot_id, "
 			                                    "out bool filename_used)",
 			screenshot_requested, gc);
-	
-	obs_enter_graphics();
-	gc->screenshot.copy_tex = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
-	obs_leave_graphics();
 
 	game_capture_update(gc, settings);
 	return gc;
@@ -1655,6 +1651,10 @@ static void handle_screenshot(struct game_capture *gc)
 	
 	if (!gc->screenshot.copied && gc->screenshot.requested && gc->texture) {
 		obs_enter_graphics();
+
+		if (!gc->screenshot.copy_tex)
+			gc->screenshot.copy_tex = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
+
 		gs_texrender_reset(gc->screenshot.copy_tex);
 		if (gs_texrender_begin(gc->screenshot.copy_tex, gc->cx, gc->cy)) {
 			gs_ortho(0.f, (float)gc->cx, 0.f, (float)gc->cy, -100.f, 100.f);
