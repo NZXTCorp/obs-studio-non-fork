@@ -340,12 +340,24 @@ void obs_output_stop_with_timeout(obs_output_t *output, uint64_t timeout_ms)
 	bool was_started;
 	if (!obs_output_valid(output, "obs_output_stop_with_timeout"))
 		return;
-	if (!output->context.data)
+	if (!output->context.data) {
+		blog(LOG_WARNING, "obs_output_stop_with_timeout: "
+			"tried to stop output '%s' with no context data (%p)",
+			obs_output_get_name(output), output);
 		return;
-	if (!output->started)
+	}
+	if (!output->started) {
+		blog(LOG_WARNING, "obs_output_stop_with_timeout: "
+			"tried to stop output '%s', but it wasn't started (%p)",
+			obs_output_get_name(output), output);
 		return;
-	if (output->stopping)
+	}
+	if (output->stopping) {
+		blog(LOG_WARNING, "obs_output_stop_with_timeout: "
+			"tried to stop output '%s' while it's already stopping (%p)",
+			obs_output_get_name(output), output);
 		return;
+	}
 
 	encoded = (output->info.flags & OBS_OUTPUT_ENCODED) != 0;
 	was_started = output->received_audio && output->received_video;
