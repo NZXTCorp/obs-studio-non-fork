@@ -249,10 +249,11 @@ static void stop_capture(struct game_capture *gc)
 	close_handle(&gc->texture_mutexes[1]);
 
 	if (gc->texture) {
-		obs_enter_graphics();
-		gs_texture_destroy(gc->texture);
-		gs_stagesurface_destroy(gc->screenshot.surf);
-		obs_leave_graphics();
+		struct obs_graphics_defer_cleanup odgc[] = {
+			{gc->texture, OBS_CLEANUP_DEFER_TEXTURE},
+			{gc->screenshot.surf, OBS_CLEANUP_DEFER_STAGESURF}
+		};
+		obs_defer_graphics_cleanup(sizeof(odgc)/sizeof(odgc[0]), odgc);
 		gc->texture = NULL;
 		gc->screenshot.surf = NULL;
 	}
