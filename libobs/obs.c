@@ -425,12 +425,39 @@ static void obs_free_video(void)
 	}
 }
 
+void obs_free_deferred_gs_data(void)
+{
+	struct obs_core_video *video = &obs->video;
+
+	DARRAY(gs_texture_t*)   textures;
+	DARRAY(gs_stagesurf_t*) stagesurfs;
+
+	da_init(textures);
+	da_init(stagesurfs);
+
+	pthread_mutex_lock(&video->deferred_cleanup.mutex);
+	da_move(textures, video->deferred_cleanup.textures);
+	da_move(stagesurfs, video->deferred_cleanup.stagesurfs);
+	pthread_mutex_unlock(&video->deferred_cleanup.mutex);
+
+	for (size_t i = 0; i < textures.num; i++)
+		gs_texture_destroy(textures.array[i]);
+
+	for (size_t i = 0; i < stagesurfs.num; i++)
+		gs_stagesurface_destroy(stagesurfs.array[i]);
+
+	da_free(textures);
+	da_free(stagesurfs);
+}
+
 static void obs_free_graphics(void)
 {
 	struct obs_core_video *video = &obs->video;
 
 	if (video->graphics) {
 		gs_enter_context(video->graphics);
+
+		obs_free_deferred_gs_data();
 
 		gs_effect_destroy(video->default_effect);
 		gs_effect_destroy(video->default_rect_effect);
@@ -447,6 +474,8 @@ static void obs_free_graphics(void)
 		gs_destroy(video->graphics);
 		video->graphics = NULL;
 	}
+
+	pthread_mutex_destroy(&obs->video.deferred_cleanup.mutex);
 }
 
 static bool obs_init_audio(struct audio_output_info *ai)
@@ -709,6 +738,8 @@ static bool obs_init(const char *locale, const char *module_config_path,
 		return false;
 
 	if (pthread_mutex_init(&obs->video.frame_tracker_mutex, NULL) != 0)
+		return false;
+	if (pthread_mutex_init(&obs->video.deferred_cleanup.mutex, NULL) != 0)
 		return false;
 
 	if (module_config_path)

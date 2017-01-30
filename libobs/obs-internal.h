@@ -265,7 +265,16 @@ struct obs_core_video {
 	pthread_mutex_t                 frame_tracker_mutex;
 	video_tracked_frame_id          last_tracked_frame_id;
 	video_tracked_frame_id          tracked_frame_id;
+
+	struct {
+		pthread_mutex_t             mutex;
+		DARRAY(gs_texture_t*)       textures;
+		DARRAY(gs_stagesurf_t*)     stagesurfs;
+	}                               deferred_cleanup;
 };
+
+extern void obs_free_deferred_gs_data(void);
+
 
 struct obs_core_audio {
 	/* TODO: sound output subsystem */

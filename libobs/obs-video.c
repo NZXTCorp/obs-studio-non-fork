@@ -634,6 +634,7 @@ static const char *gs_context_name = "gs_context(video->graphics)";
 static const char *render_displays_name = "render_displays";
 static const char *render_frame_name = "render_frame";
 static const char *output_frame_name = "output_frame";
+static const char *deferred_cleanup_name = "deferred_cleanup";
 void *obs_video_thread(void *param)
 {
 	uint64_t last_time = 0;
@@ -670,6 +671,10 @@ void *obs_video_thread(void *param)
 		render_frame(&frame, &frame_rendered, &frame_ready);
 		profile_end(render_frame_name);
 
+		profile_start(deferred_cleanup_name);
+		obs_free_deferred_gs_data();
+		profile_end(deferred_cleanup_name);
+
 		gs_leave_context();
 		profile_end(gs_context_name);
 
@@ -701,4 +706,44 @@ video_tracked_frame_id obs_track_next_frame(void)
 	pthread_mutex_unlock(&obs->video.frame_tracker_mutex);
 
 	return tracked_id;
+}
+
+
+void obs_defer_graphics_cleanup(size_t num,
+		struct obs_graphics_defer_cleanup *items)
+{
+	struct obs_core_video *video = &obs->video;
+
+	if (video->thread_initialized) {
+		pthread_mutex_lock(&video->deferred_cleanup.mutex);
+
+		for (size_t i = 0; i < num; i++) {
+			switch (items[i].type) {
+			case OBS_CLEANUP_DEFER_TEXTURE:
+				da_push_back(video->deferred_cleanup.textures, &items[i].ptr);
+				break;
+			case OBS_CLEANUP_DEFER_STAGESURF:
+				da_push_back(video->deferred_cleanup.stagesurfs, &items[i].ptr);
+				break;
+			}
+		}
+
+		pthread_mutex_unlock(&video->deferred_cleanup.mutex);
+
+	} else {
+		obs_enter_graphics();
+
+		for (size_t i = 0; i < num; i++) {
+			switch (items[i].type) {
+			case OBS_CLEANUP_DEFER_TEXTURE:
+				gs_texture_destroy(items[i].ptr);
+				break;
+			case OBS_CLEANUP_DEFER_STAGESURF:
+				gs_stagesurface_destroy(items[i].ptr);
+				break;
+			}
+		}
+
+		obs_leave_graphics();
+	}
 }

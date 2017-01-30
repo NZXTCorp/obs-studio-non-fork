@@ -237,6 +237,16 @@ struct obs_source_frame {
 	uint32_t            shared_handle;
 };
 
+
+enum obs_graphics_defer_cleanup_type {
+	OBS_CLEANUP_DEFER_TEXTURE,
+	OBS_CLEANUP_DEFER_STAGESURF,
+};
+struct obs_graphics_defer_cleanup {
+	void                                 *ptr;
+	enum obs_graphics_defer_cleanup_type type;
+};
+
 /* ------------------------------------------------------------------------- */
 /* OBS context */
 
@@ -310,6 +320,10 @@ EXPORT bool obs_get_video_info(struct obs_video_info *ovi);
 EXPORT bool obs_get_audio_info(struct obs_audio_info *oai);
 
 EXPORT video_tracked_frame_id obs_track_next_frame(void);
+
+
+EXPORT void obs_defer_graphics_cleanup(size_t num,
+		struct obs_graphics_defer_cleanup *items);
 
 /**
  * Opens a plugin module directly from a specific path.
