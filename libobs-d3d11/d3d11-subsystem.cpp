@@ -43,6 +43,17 @@ static inline void LogD3D11ErrorDetails(HRError error, gs_device_t *device)
 	}
 }
 
+static bool HRRebuildRemovedDevice(gs_device_t *device, HRESULT hr)
+{
+	if (hr == DXGI_ERROR_DEVICE_REMOVED ||
+		hr == DXGI_ERROR_DEVICE_RESET) {
+		device->RebuildDevice();
+		return true;
+	}
+
+	return false;
+}
+
 static const IID dxgiFactory2 =
 {0x50c83a1c, 0xe072, 0x4c48, {0x87, 0xb0, 0x36, 0x30, 0xfa, 0x36, 0xa6, 0xd0}};
 
@@ -723,18 +734,29 @@ gs_texture_t *device_texture_create(gs_device_t *device, uint32_t width,
 		uint32_t height, enum gs_color_format color_format,
 		uint32_t levels, const uint8_t **data, uint32_t flags)
 {
+	bool retry = true;
 	gs_texture *texture = NULL;
-	try {
-		texture = new gs_texture_2d(device, width, height, color_format,
-				levels, data, flags, GS_TEXTURE_2D, false,
-				false);
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_texture_create (D3D11): %s (%08lX)",
-				error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
-	} catch (const char *error) {
-		blog(LOG_ERROR, "device_texture_create (D3D11): %s", error);
-	}
+	do {
+		try {
+			texture = new gs_texture_2d(device, width, height, color_format,
+					levels, data, flags, GS_TEXTURE_2D, false,
+					false);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_texture_create (D3D11): %s (%08lX)",
+					error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_texture_create (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
+		} catch (const char *error) {
+			blog(LOG_ERROR, "device_texture_create (D3D11): %s", error);
+		}
+
+		break;
+	} while (true);
 
 	return texture;
 }
@@ -743,20 +765,31 @@ gs_texture_t *device_cubetexture_create(gs_device_t *device, uint32_t size,
 		enum gs_color_format color_format, uint32_t levels,
 		const uint8_t **data, uint32_t flags)
 {
+	bool retry = true;
 	gs_texture *texture = NULL;
-	try {
-		texture = new gs_texture_2d(device, size, size, color_format,
-				levels, data, flags, GS_TEXTURE_CUBE, false,
-				false);
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_cubetexture_create (D3D11): %s "
-		                "(%08lX)",
-		                error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
-	} catch (const char *error) {
-		blog(LOG_ERROR, "device_cubetexture_create (D3D11): %s",
-				error);
-	}
+	do {
+		try {
+			texture = new gs_texture_2d(device, size, size, color_format,
+					levels, data, flags, GS_TEXTURE_CUBE, false,
+					false);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_cubetexture_create (D3D11): %s "
+			                "(%08lX)",
+			                error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_cubetexture_create (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
+		} catch (const char *error) {
+			blog(LOG_ERROR, "device_cubetexture_create (D3D11): %s",
+					error);
+		}
+
+		break;
+	} while (true);
 
 	return texture;
 }
@@ -781,15 +814,26 @@ gs_texture_t *device_voltexture_create(gs_device_t *device, uint32_t width,
 gs_zstencil_t *device_zstencil_create(gs_device_t *device, uint32_t width,
 		uint32_t height, enum gs_zstencil_format format)
 {
+	bool retry = true;
 	gs_zstencil_buffer *zstencil = NULL;
-	try {
-		zstencil = new gs_zstencil_buffer(device, width, height,
-				format);
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_zstencil_create (D3D11): %s (%08lX)",
-				error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
-	}
+	do {
+		try {
+			zstencil = new gs_zstencil_buffer(device, width, height,
+					format);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_zstencil_create (D3D11): %s (%08lX)",
+					error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_zstencil_create (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
+		}
+
+		break;
+	} while (true);
 
 	return zstencil;
 }
@@ -797,16 +841,27 @@ gs_zstencil_t *device_zstencil_create(gs_device_t *device, uint32_t width,
 gs_stagesurf_t *device_stagesurface_create(gs_device_t *device, uint32_t width,
 		uint32_t height, enum gs_color_format color_format)
 {
+	bool retry = true;
 	gs_stage_surface *surf = NULL;
-	try {
-		surf = new gs_stage_surface(device, width, height,
-				color_format);
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_stagesurface_create (D3D11): %s "
-		                "(%08lX)",
-				error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
-	}
+	do {
+		try {
+			surf = new gs_stage_surface(device, width, height,
+					color_format);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_stagesurface_create (D3D11): %s "
+			                "(%08lX)",
+					error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_stagesurface_create (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
+		}
+
+		break;
+	} while (true);
 
 	return surf;
 }
@@ -814,15 +869,26 @@ gs_stagesurf_t *device_stagesurface_create(gs_device_t *device, uint32_t width,
 gs_samplerstate_t *device_samplerstate_create(gs_device_t *device,
 		const struct gs_sampler_info *info)
 {
+	bool retry = true;
 	gs_sampler_state *ss = NULL;
-	try {
-		ss = new gs_sampler_state(device, info);
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_samplerstate_create (D3D11): %s "
-		                "(%08lX)",
-				error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
-	}
+	do {
+		try {
+			ss = new gs_sampler_state(device, info);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_samplerstate_create (D3D11): %s "
+			                "(%08lX)",
+					error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_samplerstate_create (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
+		}
+
+		break;
+	} while (true);
 
 	return ss;
 }
@@ -831,28 +897,39 @@ gs_shader_t *device_vertexshader_create(gs_device_t *device,
 		const char *shader_string, const char *file,
 		char **error_string)
 {
+	bool retry = true;
 	gs_vertex_shader *shader = NULL;
-	try {
-		shader = new gs_vertex_shader(device, file, shader_string);
+	do {
+		try {
+			shader = new gs_vertex_shader(device, file, shader_string);
 
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_vertexshader_create (D3D11): %s "
-		                "(%08lX)",
-				error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_vertexshader_create (D3D11): %s "
+			                "(%08lX)",
+					error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_vertexshader_create (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
 
-	} catch (ShaderError error) {
-		const char *buf = (const char*)error.errors->GetBufferPointer();
-		if (error_string)
-			*error_string = bstrdup(buf);
-		blog(LOG_ERROR, "device_vertexshader_create (D3D11): "
-		                "Compile warnings/errors for %s:\n%s",
-		                file, buf);
+		} catch (ShaderError error) {
+			const char *buf = (const char*)error.errors->GetBufferPointer();
+			if (error_string)
+				*error_string = bstrdup(buf);
+			blog(LOG_ERROR, "device_vertexshader_create (D3D11): "
+			                "Compile warnings/errors for %s:\n%s",
+			                file, buf);
 
-	} catch (const char *error) {
-		blog(LOG_ERROR, "device_vertexshader_create (D3D11): %s",
-				error);
-	}
+		} catch (const char *error) {
+			blog(LOG_ERROR, "device_vertexshader_create (D3D11): %s",
+					error);
+		}
+
+		break;
+	} while (true);
 
 	return shader;
 }
@@ -861,28 +938,39 @@ gs_shader_t *device_pixelshader_create(gs_device_t *device,
 		const char *shader_string, const char *file,
 		char **error_string)
 {
+	bool retry = true;
 	gs_pixel_shader *shader = NULL;
-	try {
-		shader = new gs_pixel_shader(device, file, shader_string);
+	do {
+		try {
+			shader = new gs_pixel_shader(device, file, shader_string);
 
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_pixelshader_create (D3D11): %s "
-		                "(%08lX)",
-				error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_pixelshader_create (D3D11): %s "
+			                "(%08lX)",
+					error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_pixelshader_create (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
 
-	} catch (ShaderError error) {
-		const char *buf = (const char*)error.errors->GetBufferPointer();
-		if (error_string)
-			*error_string = bstrdup(buf);
-		blog(LOG_ERROR, "device_pixelshader_create (D3D11): "
-		                "Compiler warnings/errors for %s:\n%s",
-		                file, buf);
+		} catch (ShaderError error) {
+			const char *buf = (const char*)error.errors->GetBufferPointer();
+			if (error_string)
+				*error_string = bstrdup(buf);
+			blog(LOG_ERROR, "device_pixelshader_create (D3D11): "
+			                "Compiler warnings/errors for %s:\n%s",
+			                file, buf);
 
-	} catch (const char *error) {
-		blog(LOG_ERROR, "device_pixelshader_create (D3D11): %s",
-				error);
-	}
+		} catch (const char *error) {
+			blog(LOG_ERROR, "device_pixelshader_create (D3D11): %s",
+					error);
+		}
+
+		break;
+	} while (true);
 
 	return shader;
 }
@@ -890,18 +978,29 @@ gs_shader_t *device_pixelshader_create(gs_device_t *device,
 gs_vertbuffer_t *device_vertexbuffer_create(gs_device_t *device,
 		struct gs_vb_data *data, uint32_t flags)
 {
+	bool retry = true;
 	gs_vertex_buffer *buffer = NULL;
-	try {
-		buffer = new gs_vertex_buffer(device, data, flags);
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_vertexbuffer_create (D3D11): %s "
-		                "(%08lX)",
-				error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
-	} catch (const char *error) {
-		blog(LOG_ERROR, "device_vertexbuffer_create (D3D11): %s",
-				error);
-	}
+	do {
+		try {
+			buffer = new gs_vertex_buffer(device, data, flags);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_vertexbuffer_create (D3D11): %s "
+			                "(%08lX)",
+					error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_vertexbuffer_create (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
+		} catch (const char *error) {
+			blog(LOG_ERROR, "device_vertexbuffer_create (D3D11): %s",
+					error);
+		}
+
+		break;
+	} while (true);
 
 	return buffer;
 }
@@ -910,14 +1009,25 @@ gs_indexbuffer_t *device_indexbuffer_create(gs_device_t *device,
 		enum gs_index_type type, void *indices, size_t num,
 		uint32_t flags)
 {
+	bool retry = true;
 	gs_index_buffer *buffer = NULL;
-	try {
-		buffer = new gs_index_buffer(device, type, indices, num, flags);
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_indexbuffer_create (D3D11): %s (%08lX)",
-				error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
-	}
+	do {
+		try {
+			buffer = new gs_index_buffer(device, type, indices, num, flags);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_indexbuffer_create (D3D11): %s (%08lX)",
+					error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_indexbuffer_create (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
+		}
+
+		break;
+	} while (true);
 
 	return buffer;
 }
@@ -1329,40 +1439,50 @@ void device_begin_scene(gs_device_t *device)
 void device_draw(gs_device_t *device, enum gs_draw_mode draw_mode,
 		uint32_t start_vert, uint32_t num_verts)
 {
-	try {
-		if (!device->curVertexShader)
-			throw "No vertex shader specified";
+	bool retry = true;
+	do {
+		try {
+			if (!device->curVertexShader)
+				throw "No vertex shader specified";
 
-		if (!device->curPixelShader)
-			throw "No pixel shader specified";
+			if (!device->curPixelShader)
+				throw "No pixel shader specified";
 
-		if (!device->curVertexBuffer)
-			throw "No vertex buffer specified";
+			if (!device->curVertexBuffer)
+				throw "No vertex buffer specified";
 
-		if (!device->curSwapChain && !device->curRenderTarget)
-			throw "No render target or swap chain to render to";
+			if (!device->curSwapChain && !device->curRenderTarget)
+				throw "No render target or swap chain to render to";
 
-		gs_effect_t *effect = gs_get_effect();
-		if (effect)
-			gs_effect_update_params(effect);
+			gs_effect_t *effect = gs_get_effect();
+			if (effect)
+				gs_effect_update_params(effect);
 
-		device->UpdateBlendState();
-		device->UpdateRasterState();
-		device->UpdateZStencilState();
-		device->UpdateViewProjMatrix();
-		device->curVertexShader->UploadParams();
-		device->curPixelShader->UploadParams();
+			device->UpdateBlendState();
+			device->UpdateRasterState();
+			device->UpdateZStencilState();
+			device->UpdateViewProjMatrix();
+			device->curVertexShader->UploadParams();
+			device->curPixelShader->UploadParams();
+			break;
 
-	} catch (const char *error) {
-		blog(LOG_ERROR, "device_draw (D3D11): %s", error);
-		return;
+		} catch (const char *error) {
+			blog(LOG_ERROR, "device_draw (D3D11): %s", error);
+			return;
 
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_draw (D3D11): %s (%08lX)", error.str,
-				error.hr);
-		LogD3D11ErrorDetails(error, device);
-		return;
-	}
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_draw (D3D11): %s (%08lX)", error.str,
+					error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_draw (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
+			return;
+		}
+	} while (true);
 
 	D3D11_PRIMITIVE_TOPOLOGY newTopology = ConvertGSTopology(draw_mode);
 	if (device->curToplogy != newTopology) {
@@ -1438,11 +1558,7 @@ void device_present(gs_device_t *device)
 	HRESULT hr;
 
 	if (device->curSwapChain) {
-		hr = device->curSwapChain->swap->Present(0, 0);
-		if (hr == DXGI_ERROR_DEVICE_REMOVED ||
-		    hr == DXGI_ERROR_DEVICE_RESET) {
-			device->RebuildDevice();
-		}
+		HRRebuildRemovedDevice(device, device->curSwapChain->swap->Present(0, 0));
 	} else {
 		blog(LOG_WARNING, "device_present (D3D11): No active swap");
 	}
@@ -1765,6 +1881,7 @@ enum gs_color_format gs_texture_get_color_format(const gs_texture_t *tex)
 
 bool gs_texture_map(gs_texture_t *tex, uint8_t **ptr, uint32_t *linesize)
 {
+	bool retry = true;
 	HRESULT hr;
 
 	if (tex->type != GS_TEXTURE_2D)
@@ -1773,8 +1890,16 @@ bool gs_texture_map(gs_texture_t *tex, uint8_t **ptr, uint32_t *linesize)
 	gs_texture_2d *tex2d = static_cast<gs_texture_2d*>(tex);
 
 	D3D11_MAPPED_SUBRESOURCE map;
-	hr = tex2d->device->context->Map(tex2d->texture, 0,
-			D3D11_MAP_WRITE_DISCARD, 0, &map);
+	do {
+		hr = tex2d->device->context->Map(tex2d->texture, 0,
+				D3D11_MAP_WRITE_DISCARD, 0, &map);
+		if (retry && HRRebuildRemovedDevice(tex2d->device, hr)) {
+			retry = false;
+			continue;
+		}
+
+		break;
+	} while (true);
 	if (FAILED(hr))
 		return false;
 
@@ -1885,9 +2010,21 @@ enum gs_color_format gs_stagesurface_get_color_format(
 bool gs_stagesurface_map(gs_stagesurf_t *stagesurf, uint8_t **data,
 		uint32_t *linesize)
 {
+	bool retry = true;
+	HRESULT hr;
+
 	D3D11_MAPPED_SUBRESOURCE map;
-	if (FAILED(stagesurf->device->context->Map(stagesurf->texture, 0,
-			D3D11_MAP_READ, 0, &map)))
+	do {
+		hr = stagesurf->device->context->Map(stagesurf->texture, 0,
+				D3D11_MAP_READ, 0, &map);
+		if (retry && HRRebuildRemovedDevice(stagesurf->device, hr)) {
+			retry = false;
+			continue;
+		}
+
+		break;
+	} while (true);
+	if (FAILED(hr))
 		return false;
 
 	*data = (uint8_t*)map.pData;
@@ -1970,14 +2107,23 @@ void gs_indexbuffer_destroy(gs_indexbuffer_t *indexbuffer)
 
 void gs_indexbuffer_flush(gs_indexbuffer_t *indexbuffer)
 {
+	bool retry = true;
 	HRESULT hr;
 
 	if (!indexbuffer->dynamic)
 		return;
 
 	D3D11_MAPPED_SUBRESOURCE map;
-	hr = indexbuffer->device->context->Map(indexbuffer->indexBuffer, 0,
-			D3D11_MAP_WRITE_DISCARD, 0, &map);
+	do {
+		hr = indexbuffer->device->context->Map(indexbuffer->indexBuffer, 0,
+				D3D11_MAP_WRITE_DISCARD, 0, &map);
+		if (retry && HRRebuildRemovedDevice(indexbuffer->device, hr)) {
+			retry = false;
+			continue;
+		}
+
+		break;
+	} while (true);
 	if (FAILED(hr))
 		return;
 
@@ -2015,18 +2161,29 @@ extern "C" EXPORT bool device_shared_texture_available(void)
 extern "C" EXPORT gs_texture_t *device_texture_create_gdi(gs_device_t *device,
 		uint32_t width, uint32_t height)
 {
+	bool retry = true;
 	gs_texture *texture = nullptr;
-	try {
-		texture = new gs_texture_2d(device, width, height, GS_BGRA,
-				1, nullptr, GS_RENDER_TARGET, GS_TEXTURE_2D,
-				true, false);
-	} catch (HRError error) {
-		blog(LOG_ERROR, "device_texture_create_gdi (D3D11): %s (%08lX)",
-				error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
-	} catch (const char *error) {
-		blog(LOG_ERROR, "device_texture_create_gdi (D3D11): %s", error);
-	}
+	do {
+		try {
+			texture = new gs_texture_2d(device, width, height, GS_BGRA,
+					1, nullptr, GS_RENDER_TARGET, GS_TEXTURE_2D,
+					true, false);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "device_texture_create_gdi (D3D11): %s (%08lX)",
+					error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "device_texture_create_gdi (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
+		} catch (const char *error) {
+			blog(LOG_ERROR, "device_texture_create_gdi (D3D11): %s", error);
+		}
+
+		break;
+	} while (true);
 
 	return texture;
 }
@@ -2075,16 +2232,27 @@ extern "C" EXPORT void gs_texture_release_dc(gs_texture_t *tex)
 extern "C" EXPORT gs_texture_t *device_texture_open_shared(gs_device_t *device,
 		uint32_t handle)
 {
+	bool retry = true;
 	gs_texture *texture = nullptr;
-	try {
-		texture = new gs_texture_2d(device, handle);
-	} catch (HRError error) {
-		blog(LOG_ERROR, "gs_texture_open_shared (D3D11): %s (%08lX)",
-				error.str, error.hr);
-		LogD3D11ErrorDetails(error, device);
-	} catch (const char *error) {
-		blog(LOG_ERROR, "gs_texture_open_shared (D3D11): %s", error);
-	}
+	do {
+		try {
+			texture = new gs_texture_2d(device, handle);
+		} catch (HRError error) {
+			blog(LOG_ERROR, "gs_texture_open_shared (D3D11): %s (%08lX)",
+					error.str, error.hr);
+			LogD3D11ErrorDetails(error, device);
+			if (retry && HRRebuildRemovedDevice(device, error.hr)) {
+				blog(LOG_WARNING, "gs_texture_open_shared (D3D11): "
+						"rebuilt device, retrying");
+				retry = false;
+				continue;
+			}
+		} catch (const char *error) {
+			blog(LOG_ERROR, "gs_texture_open_shared (D3D11): %s", error);
+		}
+
+		break;
+	} while (true);
 
 	return texture;
 }
