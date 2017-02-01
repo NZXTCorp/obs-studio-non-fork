@@ -207,6 +207,8 @@ try {
 
 	blog(LOG_WARNING, "Device Remove/Reset!  Rebuilding all assets...");
 
+	luidValid = false;
+
 	/* ----------------------------------------------------------------- */
 
 	gs_obj *obj = first_obj;
@@ -265,6 +267,12 @@ try {
 	/* ----------------------------------------------------------------- */
 
 	InitFactory(adpIdx);
+
+	DXGI_ADAPTER_DESC desc;
+	if (adapter->GetDesc(&desc) == S_OK) {
+		luid = desc.AdapterLuid;
+		luidValid = true;
+	}
 
 	uint32_t createFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 	hr = D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN,
