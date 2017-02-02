@@ -477,7 +477,7 @@ private:
 	double CalculateDuration()
 	{
 		if (first_output_segment && last_output_segment)
-			return first_output_segment->first_pts - last_output_segment->last_pts;
+			return last_output_segment->last_pts - first_output_segment->first_pts;
 
 		auto start = DBL_MAX;
 		auto end_ = 0.;
