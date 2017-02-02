@@ -381,17 +381,16 @@ private:
 
 		auto find_and_output = [&](vector<shared_ptr<packets_segment>> &seg)
 		{
-			auto it = first_packets.empty() ? end(seg) : begin(seg);
+			auto it = begin(seg);
+			auto end_ = end(seg);
 			if (first_packets.empty()) {
-				for (auto i = rbegin(seg), rend_ = rend(seg); i != rend_; i++) {
-					if ((final_segment.last_pts - (*i)->first_pts) >= save_duration) {
-						it = i.base() - 1;
+				for (; it != end_; it++) {
+					if ((final_segment.last_pts - (*it)->last_pts) < save_duration)
 						break;
-					}
 				}
 			}
 
-			for (auto end_ = end(seg); it != end_; it++) {
+			for (; it != end_; it++) {
 				if (!OutputPackets(**it, &first_packets))
 					return false;
 			}
