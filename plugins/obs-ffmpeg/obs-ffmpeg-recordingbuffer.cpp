@@ -174,6 +174,7 @@ struct buffer_output {
 	video_tracked_frame_id tracked_id;
 	bool              keep_recording = false;
 	double            keep_recording_time = 0.;
+	double            save_duration = 0.;
 
 	int64_t           end_pts;
 	bool              wait_for_end_time = false;
@@ -197,10 +198,11 @@ struct buffer_output {
 	unique_ptr<calldata_t> signal_data;
 
 	buffer_output(ffmpeg_muxer *stream, const char *path_,
-			video_tracked_frame_id tracked_id=0)
+			video_tracked_frame_id tracked_id=0, double save_duration=0.)
 		: stream(stream),
 		  tracked_id(tracked_id),
-		  headers(stream->encoder_headers)
+		  headers(stream->encoder_headers),
+		  save_duration(save_duration)
 	{
 		dstr_copy(path, path_);
 
@@ -314,6 +316,9 @@ private:
 	using stream_id_t = std::pair<obs_encoder_type, decltype(encoder_packet::track_idx)>;
 	using first_stream_packet_t = std::map<stream_id_t, encoder_packet>;
 
+	packets_segment *first_output_segment = nullptr;
+	packets_segment *last_output_segment = nullptr;
+
 	void RebaseTimestamp(encoder_packet &pkt,
 			first_stream_packet_t *first_packets=nullptr)
 	{
@@ -341,6 +346,12 @@ private:
 			first_stream_packet_t *first_packets=nullptr)
 	{
 		seg.Finalize();
+
+		if (!first_output_segment)
+			first_output_segment = &seg;
+
+		last_output_segment = &seg;
+
 		for (auto pkt : seg.pkts) {
 			RebaseTimestamp(pkt, first_packets);
 				
@@ -364,6 +375,48 @@ private:
 		return true;
 	}
 
+	bool WriteLimitedOutput()
+	{
+		first_stream_packet_t first_packets;
+
+		auto find_and_output = [&](vector<shared_ptr<packets_segment>> &seg)
+		{
+			auto it = first_packets.empty() ? end(seg) : begin(seg);
+			if (first_packets.empty()) {
+				for (auto i = rbegin(seg), rend_ = rend(seg); i != rend_; i++) {
+					if ((final_segment.last_pts - (*i)->first_pts) >= save_duration) {
+						it = i.base() - 1;
+						break;
+					}
+				}
+			}
+
+			for (auto end_ = end(seg); it != end_; it++) {
+				if (!OutputPackets(**it, &first_packets))
+					return false;
+			}
+
+			return true;
+		};
+
+		if (!find_and_output(initial_segments)) {
+			warn("Failed to write limited initial segments");
+			return false;
+		}
+
+		if (!find_and_output(new_segments)) {
+			warn("Failed to write limited new segments");
+			return false;
+		}
+
+		if (!OutputPackets(final_segment, &first_packets)) {
+			warn("Failed to write limited final segments");
+			return false;
+		}
+
+		return true;
+	}
+
 	bool WriteOutput()
 	{
 		first_stream_packet_t first_packets;
@@ -375,7 +428,8 @@ private:
 			}
 		}
 
-		if (!OutputSegments(initial_segments, &first_packets)) {
+		bool write_all_segments = save_duration < 1.;
+		if (write_all_segments && !OutputSegments(initial_segments, &first_packets)) {
 			warn("Failed to write initial segments");
 			finish_output = false;
 			return false;
@@ -391,6 +445,9 @@ private:
 			if (exit_thread)
 				return false;
 		}
+
+		if (!write_all_segments)
+			return WriteLimitedOutput();
 		
 		if (!OutputSegments(new_segments, &first_packets)) {
 			warn("Failed to write new segments");
@@ -408,6 +465,9 @@ private:
 
 	int64_t GetStartPTS()
 	{
+		if (first_output_segment)
+			return first_output_segment->keyframe_pts;
+
 		if (initial_segments.size())
 			return initial_segments.front()->keyframe_pts;
 		if (new_segments.size())
@@ -417,6 +477,9 @@ private:
 
 	double CalculateDuration()
 	{
+		if (first_output_segment && last_output_segment)
+			return first_output_segment->first_pts - last_output_segment->last_pts;
+
 		auto start = DBL_MAX;
 		auto end_ = 0.;
 
@@ -495,13 +558,14 @@ static void output_buffer_handler(void *data, calldata_t *calldata)
 static void output_precise_buffer_handler(void *data, calldata_t *calldata)
 {
 	auto stream = static_cast<ffmpeg_muxer*>(data);
+	double duration = calldata_float(calldata, "save_duration");
 	DStr filename;
 	dstr_copy(filename, calldata_string(calldata, "filename"));
 
 	LOCK(stream->buffer_mutex);
 	auto frame_id = obs_track_next_frame();
 	stream->outputs.emplace_back(
-			new buffer_output{stream, filename, frame_id});
+			new buffer_output{stream, filename, frame_id, duration});
 
 	calldata_set_int(calldata, "tracked_frame_id", frame_id);
 }
@@ -539,6 +603,7 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 	proc_handler_add(proc, "void output_buffer(string filename)",
 			output_buffer_handler, stream);
 	proc_handler_add(proc, "void output_precise_buffer(string filename, "
+			"float save_duration, "
 			"out int tracked_frame_id)",
 			output_precise_buffer_handler, stream);
 	proc_handler_add(proc, "void output_precise_buffer_and_keep_recording(string filename, "
