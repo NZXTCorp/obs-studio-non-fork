@@ -135,6 +135,8 @@ struct game_capture {
 	HANDLE                        target_process;
 	HANDLE                        texture_mutexes[2];
 
+	uint32_t                      last_map_id;
+
 	struct {
 		gs_texrender_t            *copy_tex;
 		gs_stagesurf_t            *surf;
@@ -267,6 +269,8 @@ static void stop_capture(struct game_capture *gc)
 		signal_handler_signal(gc->signals, "stop_capture", &gc->stop_calldata);
 		gc->did_capture = false;
 		close_handle(&gc->target_process);
+
+		gc->last_map_id = 0;
 	}
 
 	gc->copy_texture = NULL;
@@ -1236,6 +1240,11 @@ static inline enum capture_result init_capture_data(struct game_capture *gc)
 	if (!gc->hook_data_map) {
 		DWORD error = GetLastError();
 		if (error == 2) {
+			if (gc->global_hook_info->map_id != gc->last_map_id) {
+				gc->last_map_id = gc->global_hook_info->map_id;
+				warn("init_capture_data: couldn't open hook_data_map %lu",
+					gc->last_map_id);
+			}
 			return CAPTURE_RETRY;
 		} else {
 			warn("init_capture_data: failed to open file "
