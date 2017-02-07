@@ -254,7 +254,10 @@ struct buffer_output {
 			exit_thread = true;
 		});
 
-		output_thread.join();
+		if (output_thread.get_id() != this_thread::get_id())
+			output_thread.join();
+		else
+			output_thread.detach(); // FIXME: investigate when this is necessary
 	}
 
 	template <typename Fun>
