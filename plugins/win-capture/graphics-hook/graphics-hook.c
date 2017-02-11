@@ -1,5 +1,6 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
+#include <ShlObj.h>
 #include <psapi.h>
 #include "graphics-hook.h"
 #include "../obfuscate.h"
@@ -64,6 +65,53 @@ static char                    *log_buffer_write               = NULL;
 static char                    *log_buffer_write_reset         = NULL;
 static size_t                  log_buffer_dropped_messages     = 0;
 
+static HANDLE                  init_log_file                  = NULL;
+
+
+static void open_init_log(void)
+{
+	wchar_t log_file_path[MAX_PATH];
+	wchar_t *fpath;
+	if (FAILED(SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &fpath)))
+		return;
+
+	int res = swprintf(log_file_path, MAX_PATH, L"%s/Forge/logs/hook-init-log-%ld.log", fpath, GetCurrentProcessId());
+	CoTaskMemFree(fpath);
+
+	if (res < 1)
+		return;
+
+	log_file_path[MAX_PATH - 1] = 0;
+	init_log_file = CreateFileW(log_file_path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (init_log_file == INVALID_HANDLE_VALUE)
+		init_log_file = NULL;
+}
+
+static void close_init_log(void)
+{
+	if (!init_log_file)
+		return;
+
+	CloseHandle(init_log_file);
+	init_log_file = NULL;
+}
+
+static void init_log(const char *format, ...)
+{
+	if (!init_log_file)
+		return;
+
+	va_list args;
+	char message[1024] = "";
+
+	va_start(args, format);
+	int num = _vsprintf_p(message, 1024, format, args);
+	va_end(args);
+	if (num > 0) {
+		WriteFile(init_log_file, message, num, NULL, NULL);
+		WriteFile(init_log_file, "\n", 1, NULL, NULL);
+	}
+}
 
 static inline void wait_for_dll_main_finish(HANDLE thread_handle)
 {
@@ -108,7 +156,7 @@ static HANDLE init_event(const char *name, DWORD pid)
 {
 	HANDLE handle = get_event_plus_id(name, pid);
 	if (!handle)
-		hlog("Failed to get event '%s': %lu", name, GetLastError());
+		init_log("Failed to get event '%s': %lu", name, GetLastError());
 	return handle;
 }
 
@@ -121,7 +169,7 @@ static HANDLE init_mutex(const char *name, DWORD pid)
 
 	handle = OpenMutexA(MUTEX_ALL_ACCESS, false, new_name);
 	if (!handle)
-		hlog("Failed to open mutex '%s': %lu", name, GetLastError());
+		init_log("Failed to open mutex '%s': %lu", name, GetLastError());
 	return handle;
 }
 
@@ -173,7 +221,7 @@ static inline bool init_system_path(void)
 {
 	UINT ret = GetSystemDirectoryA(system_path, MAX_PATH);
 	if (!ret) {
-		hlog("Failed to get windows system path: %lu", GetLastError());
+		init_log("Failed to get windows system path: %lu", GetLastError());
 		return false;
 	}
 
@@ -196,7 +244,7 @@ static inline bool init_hook_info(void)
 {
 	filemap_hook_info = get_hook_info(GetCurrentProcessId());
 	if (!filemap_hook_info) {
-		hlog("Failed to create hook info file mapping: %lu",
+		init_log("Failed to create hook info file mapping: %lu",
 				GetLastError());
 		return false;
 	}
@@ -204,7 +252,7 @@ static inline bool init_hook_info(void)
 	global_hook_info = MapViewOfFile(filemap_hook_info, FILE_MAP_ALL_ACCESS,
 			0, 0, sizeof(struct hook_info));
 	if (!global_hook_info) {
-		hlog("Failed to map the hook info file mapping: %lu",
+		init_log("Failed to map the hook info file mapping: %lu",
 				GetLastError());
 		return false;
 	}
@@ -306,6 +354,7 @@ static inline bool init_hook(HANDLE thread_handle)
 			GetCurrentProcessId());
 
 	if (!init_pipe()) {
+		init_log("init_pipe failed");
 		return false;
 	}
 	if (!init_signals()) {
@@ -455,11 +504,19 @@ static inline void capture_loop(void)
 
 static DWORD WINAPI main_capture_thread(HANDLE thread_handle)
 {
+	open_init_log();
+	init_log("Started main_capture_thread");
+
 	if (!init_hook(thread_handle)) {
+		init_log("init_hook failed");
+		close_init_log();
 		DbgOut("Failed to init hook\n");
 		free_hook();
 		return 0;
 	}
+
+	init_log("Starting capture loop");
+	close_init_log();
 
 	capture_loop();
 	return 0;
