@@ -108,8 +108,9 @@ static void init_log(const char *format, ...)
 	int num = _vsprintf_p(message, 1024, format, args);
 	va_end(args);
 	if (num > 0) {
-		WriteFile(init_log_file, message, num, NULL, NULL);
-		WriteFile(init_log_file, "\n", 1, NULL, NULL);
+		DWORD bytes_written;
+		WriteFile(init_log_file, message, num, &bytes_written, NULL);
+		WriteFile(init_log_file, "\n", 1, &bytes_written, NULL);
 	}
 }
 
