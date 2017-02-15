@@ -260,11 +260,6 @@ static void stop_capture(struct game_capture *gc)
 		gc->screenshot.surf = NULL;
 	}
 
-
-	EnterCriticalSection(&gc->ipc_mutex);
-	bool ipc_process_died = gc->monitored_process_died;
-	LeaveCriticalSection(&gc->ipc_mutex);
-
 	if (target_process_died(gc)) {
 		signal_handler_signal(gc->signals, "stop_capture", &gc->stop_calldata);
 		gc->did_capture = false;
