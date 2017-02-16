@@ -114,6 +114,7 @@ struct game_capture {
 	bool                          dwm_capture : 1;
 	bool                          initial_config : 1;
 	bool                          convert_16bit : 1;
+	bool                          pipe_initialized : 1;
 
 	CRITICAL_SECTION              ipc_mutex;
 	DWORD                         ipc_result;
@@ -218,11 +219,31 @@ static inline bool target_process_died(struct game_capture *gc);
 
 static void stop_capture(struct game_capture *gc)
 {
-	ipc_pipe_server_free(&gc->pipe);
-
 	if (gc->hook_stop) {
 		SetEvent(gc->hook_stop);
 	}
+
+	if (target_process_died(gc)) {
+		signal_handler_signal(gc->signals, "stop_capture", &gc->stop_calldata);
+		gc->did_capture = false;
+		close_handle(&gc->target_process);
+
+		gc->last_map_id = 0;
+	}
+
+	gc->copy_texture = NULL;
+	gc->wait_for_target_startup = false;
+	gc->active = false;
+	gc->capturing = false;
+}
+
+static void close_capture(struct game_capture *gc)
+{
+	stop_capture(gc);
+
+	ipc_pipe_server_free(&gc->pipe);
+	gc->pipe_initialized = false;
+
 	if (gc->global_hook_info) {
 		UnmapViewOfFile(gc->global_hook_info);
 		gc->global_hook_info = NULL;
@@ -259,19 +280,6 @@ static void stop_capture(struct game_capture *gc)
 		gc->texture = NULL;
 		gc->screenshot.surf = NULL;
 	}
-
-	if (target_process_died(gc)) {
-		signal_handler_signal(gc->signals, "stop_capture", &gc->stop_calldata);
-		gc->did_capture = false;
-		close_handle(&gc->target_process);
-
-		gc->last_map_id = 0;
-	}
-
-	gc->copy_texture = NULL;
-	gc->wait_for_target_startup = false;
-	gc->active = false;
-	gc->capturing = false;
 }
 
 static inline void free_config(struct game_capture_config *config)
@@ -287,7 +295,7 @@ static inline void free_config(struct game_capture_config *config)
 static void game_capture_destroy(void *data)
 {
 	struct game_capture *gc = data;
-	stop_capture(gc);
+	close_capture(gc);
 	close_handle(&gc->target_process);
 
 	obs_enter_graphics();
@@ -449,7 +457,7 @@ static void game_capture_update(void *data, obs_data_t *settings)
 
 	if (!gc->initial_config) {
 		if (reset_capture) {
-			stop_capture(gc);
+			close_capture(gc);
 		}
 	} else {
 		gc->initial_config = false;
@@ -693,6 +701,9 @@ check_alive:
 
 static inline bool init_keepalive(struct game_capture *gc)
 {
+	if (gc->keep_alive)
+		return true;
+
 	gc->keep_alive = create_event_id(false, false, EVENT_HOOK_KEEPALIVE,
 			gc->process_id);
 	if (!gc->keep_alive) {
@@ -705,6 +716,9 @@ static inline bool init_keepalive(struct game_capture *gc)
 
 static inline bool init_texture_mutexes(struct game_capture *gc)
 {
+	if (gc->texture_mutexes[0] && !gc->texture_mutexes[1])
+		return true;
+
 	gc->texture_mutexes[0] = get_mutex_plus_id(MUTEX_TEXTURE1,
 			gc->process_id);
 	gc->texture_mutexes[1] = get_mutex_plus_id(MUTEX_TEXTURE2,
@@ -757,6 +771,9 @@ static inline void reset_frame_interval(struct game_capture *gc)
 
 static inline bool init_hook_info(struct game_capture *gc)
 {
+	if (gc->global_hook_info_map && gc->global_hook_info)
+		goto copy_config;
+
 	gc->global_hook_info_map = get_hook_info(gc->process_id);
 	if (!gc->global_hook_info_map) {
 		warn("init_hook_info: get_hook_info failed: %lu",
@@ -773,6 +790,7 @@ static inline bool init_hook_info(struct game_capture *gc)
 		return false;
 	}
 
+copy_config:
 	gc->global_hook_info->offsets = gc->process_is_64bit ?
 		offsets64 : offsets32;
 	gc->global_hook_info->capture_overlay = gc->config.capture_overlays;
@@ -816,6 +834,9 @@ static void pipe_log(void *param, uint8_t *data, size_t size)
 
 static inline bool init_pipe(struct game_capture *gc)
 {
+	if (gc->pipe_initialized)
+		return true;
+
 	char name[64];
 	sprintf(name, "%s%lu", PIPE_NAME, gc->process_id);
 
@@ -823,6 +844,8 @@ static inline bool init_pipe(struct game_capture *gc)
 		warn("init_pipe: failed to start pipe");
 		return false;
 	}
+
+	gc->pipe_initialized = true;
 
 	return true;
 }
@@ -986,6 +1009,27 @@ cleanup:
 	return success;
 }
 
+static bool init_capture(struct game_capture *gc)
+{
+	if (!open_target_process(gc)) {
+		return false;
+	}
+	if (!init_keepalive(gc)) {
+		return false;
+	}
+	if (!init_texture_mutexes(gc)) {
+		return false;
+	}
+	if (!init_hook_info(gc)) {
+		return false;
+	}
+	if (!init_pipe(gc)) {
+		return false;
+	}
+
+	return true;
+}
+
 static bool init_hook(struct game_capture *gc)
 {
 	if (gc->config.capture_any_fullscreen) {
@@ -1002,21 +1046,6 @@ static bool init_hook(struct game_capture *gc)
 		info("attempting to hook process: %s", gc->config.executable);
 	}
 
-	if (!open_target_process(gc)) {
-		return false;
-	}
-	if (!init_keepalive(gc)) {
-		return false;
-	}
-	if (!init_texture_mutexes(gc)) {
-		return false;
-	}
-	if (!init_hook_info(gc)) {
-		return false;
-	}
-	if (!init_pipe(gc)) {
-		return false;
-	}
 	if (!attempt_existing_hook(gc)) {
 		if (!inject_hook(gc)) {
 			return false;
@@ -1128,7 +1157,10 @@ static void try_hook(struct game_capture *gc)
 		gc->process_id = gc->config.process_id;
 		gc->next_window = gc->config.hwnd;
 
-		if (!init_hook(gc))
+		if (!init_capture(gc))
+			close_capture(gc);
+
+		else if (!init_hook(gc))
 			stop_capture(gc);
 
 		return;
@@ -1156,9 +1188,11 @@ static void try_hook(struct game_capture *gc)
 			return;
 		}
 
-		if (!init_hook(gc)) {
+		if (!init_capture(gc))
+			close_capture(gc);
+		else if (!init_hook(gc))
 			stop_capture(gc);
-		}
+
 	} else {
 		gc->active = false;
 	}
@@ -1685,7 +1719,7 @@ static void game_capture_tick(void *data, float seconds)
 
 	if ((gc->hook_stop && object_signalled(gc->hook_stop)) ||
 		target_process_died(gc)) {
-		stop_capture(gc);
+		close_capture(gc);
 	}
 
 	if (gc->active && !gc->hook_ready && gc->process_id) {
@@ -1762,7 +1796,7 @@ static void game_capture_tick(void *data, float seconds)
 		if (!capture_valid(gc)) {
 			info("capture window no longer exists, "
 			     "terminating capture");
-			stop_capture(gc);
+			close_capture(gc);
 		} else {
 			if (gc->copy_texture) {
 				obs_enter_graphics();
