@@ -172,6 +172,8 @@ struct buffer_output {
 	unique_ptr<os_process_pipe_t> pipe;
 	DStr              path;
 	video_tracked_frame_id tracked_id;
+	bool              tracked_frame_pts_valid = false;
+	double            tracked_frame_pts;
 	bool              keep_recording = false;
 	double            keep_recording_time = 0.;
 	double            save_duration = 0.;
@@ -274,6 +276,11 @@ struct buffer_output {
 	{
 		if (finish_output)
 			return false;
+
+		if (tracked_id == pkt.tracked_id) {
+			tracked_frame_pts_valid = true;
+			tracked_frame_pts = static_cast<double>(pkt.pts) * pkt.timebase_num / pkt.timebase_den;
+		}
 
 		if (keep_recording && keep_recording_time <= 0)
 			return true;
@@ -382,13 +389,16 @@ private:
 	{
 		first_stream_packet_t first_packets;
 
+		auto last_pts = tracked_frame_pts_valid ?
+			tracked_frame_pts : final_segment.last_pts;
+
 		auto find_and_output = [&](vector<shared_ptr<packets_segment>> &seg)
 		{
 			auto it = begin(seg);
 			auto end_ = end(seg);
 			if (first_packets.empty()) {
 				for (; it != end_; it++) {
-					if ((final_segment.last_pts - (*it)->last_pts) < save_duration)
+					if ((last_pts - (*it)->last_pts) < save_duration)
 						break;
 				}
 			}
