@@ -165,6 +165,9 @@ struct ffmpeg_muxer {
 
 	vector<unique_ptr<buffer_output>> outputs;
 	vector<unique_ptr<buffer_output>> complete_outputs;
+
+	uint32_t next_interruptiple_buffer_id = 0;
+	map<uint32_t, buffer_output*> interruptible_buffers;
 };
 
 struct buffer_output {
@@ -174,9 +177,15 @@ struct buffer_output {
 	video_tracked_frame_id tracked_id;
 	bool              tracked_frame_pts_valid = false;
 	double            tracked_frame_pts;
+	bool              stop_frame_id_valid = false;
+	bool              stop_frame_id_found = false;
+	video_tracked_frame_id stop_frame_id;
 	bool              keep_recording = false;
 	double            keep_recording_time = 0.;
 	double            save_duration = 0.;
+
+	bool              buffer_id_valid = false;
+	uint32_t          buffer_id;
 
 	int64_t           end_pts;
 	bool              wait_for_end_time = false;
@@ -282,7 +291,10 @@ struct buffer_output {
 			tracked_frame_pts = static_cast<double>(pkt.pts) * pkt.timebase_num / pkt.timebase_den;
 		}
 
-		if (keep_recording && keep_recording_time <= 0)
+		if (stop_frame_id_valid && stop_frame_id == pkt.tracked_id)
+			stop_frame_id_found = true;
+
+		if (keep_recording && keep_recording_time <= 0 && !stop_frame_id_found)
 			return true;
 
 		if (pkt.type != OBS_ENCODER_VIDEO)
@@ -291,7 +303,7 @@ struct buffer_output {
 		if (wait_for_dts && end_dts > pkt.dts)
 			return true;
 		else if (!wait_for_dts) {
-			if (tracked_id != pkt.tracked_id && (!wait_for_end_time || pkt.pts < end_pts))
+			if (tracked_id != pkt.tracked_id && (!wait_for_end_time || pkt.pts < end_pts) && (!stop_frame_id_valid || !stop_frame_id_found))
 				return true;
 			if (keep_recording && !wait_for_end_time) {
 				wait_for_end_time = true;
@@ -524,6 +536,8 @@ private:
 			if (tracked_id)
 				calldata_set_int(signal_data.get(), "tracked_frame_id", tracked_id);
 
+			calldata_set_ptr(signal_data.get(), "buffer_id", buffer_id_valid ? &buffer_id : nullptr);
+
 			signal_handler_signal(stream->signal,
 					"buffer_output_finished", signal_data.get());
 		} else {
@@ -537,6 +551,7 @@ private:
 
 	void SignalFailure()
 	{
+		calldata_set_ptr(signal_data.get(), "buffer_id", buffer_id_valid ? &buffer_id : nullptr);
 		signal_handler_signal(stream->signal,
 				"buffer_output_failed", signal_data.get());
 	}
@@ -600,6 +615,49 @@ static void output_precise_buffer_and_keep_recording_handler(
 	calldata_set_int(calldata, "tracked_frame_id", frame_id);
 }
 
+static void output_interruptible_future_buffer(void *data, calldata_t *calldata)
+{
+	auto stream = static_cast<ffmpeg_muxer*>(data);
+	DStr filename;
+	dstr_copy(filename, calldata_string(calldata, "filename"));
+
+	LOCK(stream->buffer_mutex);
+	auto frame_id = obs_track_next_frame();
+	stream->outputs.emplace_back(
+		new buffer_output{ stream, filename, frame_id, 1. });
+	auto &out = stream->outputs.back();
+	out->keep_recording = true;
+	out->keep_recording_time = calldata_float(calldata, "maximum_recording_duration");
+
+	auto buffer_id = stream->next_interruptiple_buffer_id++;
+	stream->interruptible_buffers.emplace(buffer_id, out.get());
+	out->buffer_id = buffer_id;
+	out->buffer_id_valid = true;
+
+	calldata_set_int(calldata, "tracked_frame_id", frame_id);
+	calldata_set_int(calldata, "buffer_id", buffer_id);
+}
+
+static void interrupt_buffer(void *data, calldata_t *calldata)
+{
+	auto stream = static_cast<ffmpeg_muxer*>(data);
+	auto buffer_id = static_cast<uint32_t>(calldata_int(calldata, "buffer_id"));
+
+	LOCK(stream->buffer_mutex);
+	auto it = stream->interruptible_buffers.find(buffer_id);
+	if (it == end(stream->interruptible_buffers)) {
+		warn("got invalid/unknown buffer_id: %d", buffer_id);
+		return;
+	}
+
+	auto &buffer = it->second;
+	auto frame_id = obs_track_next_frame();
+	buffer->stop_frame_id = frame_id;
+	buffer->stop_frame_id_valid = true;
+
+	calldata_set_int(calldata, "tracked_frame_id", frame_id);
+}
+
 static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 {
 	auto stream = new ffmpeg_muxer;
@@ -622,12 +680,18 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 			"out int tracked_frame_id, float extra_recording_duration)",
 			output_precise_buffer_and_keep_recording_handler, stream);
 
+	proc_handler_add(proc, "void output_interruptible_future_buffer(string filename, "
+			"out int tracked_frame_id, float maximum_recording_duration, out int buffer_id)",
+			output_interruptible_future_buffer, stream);
+	proc_handler_add(proc, "void interrupt_buffer(int buffer_id, out int tracked_frame_id)",
+			interrupt_buffer, stream);
+
 	auto signal = obs_output_get_signal_handler(output);
 	signal_handler_add(signal,
 			"void buffer_output_finished(ptr output, string filename, "
-			"int frames, float duration, int start_pts, int tracked_frame_id)");
+			"int frames, float duration, int start_pts, int tracked_frame_id, ptr buffer_id)");
 	signal_handler_add(signal,
-			"void buffer_output_failed(ptr output, string filename)");
+			"void buffer_output_failed(ptr output, string filename, ptr buffer_id)");
 	stream->signal = signal;
 
 	UNUSED_PARAMETER(settings);
@@ -1039,10 +1103,16 @@ static void ffmpeg_mux_data(void *data, struct encoder_packet *packet)
 	}
 
 	for (size_t i = 0; i < stream->complete_outputs.size();) {
-		if (stream->complete_outputs[i]->thread_finished)
+		if (stream->complete_outputs[i]->thread_finished) {
+			auto &out = stream->complete_outputs[i];
+			if (out->buffer_id_valid) {
+				auto it = stream->interruptible_buffers.find(out->buffer_id);
+				if (it != end(stream->interruptible_buffers))
+					stream->interruptible_buffers.erase(it);
+			}
 			stream->complete_outputs.erase(
 					begin(stream->complete_outputs) + i);
-		else
+		} else
 			i += 1;
 	}
 }
