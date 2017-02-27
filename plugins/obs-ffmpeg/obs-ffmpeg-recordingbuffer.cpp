@@ -452,7 +452,7 @@ private:
 			}
 		}
 
-		bool write_all_segments = save_duration < 1.;
+		bool write_all_segments = save_duration < .25;
 		if (write_all_segments && !OutputSegments(initial_segments, &first_packets)) {
 			warn("Failed to write initial segments");
 			finish_output = false;
@@ -624,7 +624,7 @@ static void output_interruptible_future_buffer(void *data, calldata_t *calldata)
 	LOCK(stream->buffer_mutex);
 	auto frame_id = obs_track_next_frame();
 	stream->outputs.emplace_back(
-		new buffer_output{ stream, filename, frame_id, 1. });
+		new buffer_output{ stream, filename, frame_id, .25 });
 	auto &out = stream->outputs.back();
 	out->keep_recording = true;
 	out->keep_recording_time = calldata_float(calldata, "maximum_recording_duration");
