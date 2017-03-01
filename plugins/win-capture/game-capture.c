@@ -298,10 +298,12 @@ static void game_capture_destroy(void *data)
 	close_capture(gc);
 	close_handle(&gc->target_process);
 
-	obs_enter_graphics();
-	cursor_data_free(&gc->cursor_data);
-	gs_texrender_destroy(gc->screenshot.copy_tex);
-	obs_leave_graphics();
+	cursor_data_free_deferred(&gc->cursor_data);
+
+	struct obs_graphics_defer_cleanup cleanup = {
+		gc->screenshot.copy_tex, OBS_CLEANUP_DEFER_TEXRENDER
+	};
+	obs_defer_graphics_cleanup(1, &cleanup);
 
 	free_config(&gc->config);
 

@@ -244,3 +244,25 @@ void cursor_data_free(struct cursor_data *data)
 	da_free(data->cached_textures);
 	memset(data, 0, sizeof(*data));
 }
+
+void cursor_data_free_deferred(struct cursor_data *data)
+{
+	DARRAY(struct obs_graphics_defer_cleanup) cleanup;
+	da_init(cleanup);
+	da_reserve(cleanup, data->cached_textures.num);
+
+	for (size_t i = 0; i < data->cached_textures.num; i++) {
+		struct cached_cursor *pcc = &data->cached_textures.array[i];
+		struct obs_graphics_defer_cleanup dc = {
+			pcc->texture,
+			OBS_CLEANUP_DEFER_TEXTURE
+		};
+		da_push_back(cleanup, &dc);
+	}
+	if (cleanup.num > 0)
+		obs_defer_graphics_cleanup(cleanup.num, cleanup.array);
+
+	da_free(cleanup);
+	da_free(data->cached_textures);
+	memset(data, 0, sizeof(*data));
+}
