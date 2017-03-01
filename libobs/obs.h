@@ -322,6 +322,8 @@ EXPORT bool obs_get_audio_info(struct obs_audio_info *oai);
 
 EXPORT video_tracked_frame_id obs_track_next_frame(void);
 
+EXPORT bool obs_get_video_thread_time(uint64_t *val);
+
 
 EXPORT void obs_defer_graphics_cleanup(size_t num,
 		struct obs_graphics_defer_cleanup *items);

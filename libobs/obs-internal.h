@@ -272,6 +272,9 @@ struct obs_core_video {
 		DARRAY(gs_stagesurf_t*)     stagesurfs;
 		DARRAY(gs_texrender_t*)     texrenders;
 	}                               deferred_cleanup;
+
+	pthread_mutex_t                 video_thread_time_mutex;
+	uint64_t                        video_thread_time;
 };
 
 extern void obs_free_deferred_gs_data(void);

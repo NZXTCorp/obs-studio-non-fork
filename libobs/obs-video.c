@@ -556,6 +556,10 @@ static inline void video_sleep(struct obs_core_video *video,
 	uint64_t t = cur_time + interval_ns;
 	int count;
 
+	pthread_mutex_lock(&video->video_thread_time_mutex);
+	video->video_thread_time = cur_time;
+	pthread_mutex_unlock(&video->video_thread_time_mutex);
+
 	if (os_sleepto_ns(t)) {
 		*p_time = t;
 		count = 1;
@@ -706,6 +710,20 @@ video_tracked_frame_id obs_track_next_frame(void)
 	pthread_mutex_unlock(&obs->video.frame_tracker_mutex);
 
 	return tracked_id;
+}
+
+bool obs_get_video_thread_time(uint64_t *val)
+{
+	struct obs_core_video *video = &obs->video;
+
+	if (!obs || !video->graphics || !val)
+		return false;
+
+	pthread_mutex_lock(&video->video_thread_time_mutex);
+	*val = video->video_thread_time;
+	pthread_mutex_unlock(&video->video_thread_time_mutex);
+
+	return true;
 }
 
 

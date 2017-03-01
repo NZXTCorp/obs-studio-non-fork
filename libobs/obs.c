@@ -748,6 +748,8 @@ static bool obs_init(const char *locale, const char *module_config_path,
 		return false;
 	if (pthread_mutex_init(&obs->video.deferred_cleanup.mutex, NULL) != 0)
 		return false;
+	if (pthread_mutex_init(&obs->video.video_thread_time_mutex, NULL) != 0)
+		return false;
 
 	if (module_config_path)
 		obs->module_config_path = bstrdup(module_config_path);
@@ -820,6 +822,7 @@ void obs_shutdown(void)
 	stop_video();
 	stop_hotkeys();
 
+	pthread_mutex_destroy(&obs->video.video_thread_time_mutex);
 	pthread_mutex_destroy(&obs->video.frame_tracker_mutex);
 
 	obs_free_data();
