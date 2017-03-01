@@ -725,6 +725,9 @@ void obs_defer_graphics_cleanup(size_t num,
 			case OBS_CLEANUP_DEFER_STAGESURF:
 				da_push_back(video->deferred_cleanup.stagesurfs, &items[i].ptr);
 				break;
+			case OBS_CLEANUP_DEFER_TEXRENDER:
+				da_push_back(video->deferred_cleanup.texrenders, &items[i].ptr);
+				break;
 			}
 		}
 
@@ -740,6 +743,9 @@ void obs_defer_graphics_cleanup(size_t num,
 				break;
 			case OBS_CLEANUP_DEFER_STAGESURF:
 				gs_stagesurface_destroy(items[i].ptr);
+				break;
+			case OBS_CLEANUP_DEFER_TEXRENDER:
+				gs_texrender_destroy(items[i].ptr);
 				break;
 			}
 		}

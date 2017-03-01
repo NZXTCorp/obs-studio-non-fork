@@ -431,13 +431,16 @@ void obs_free_deferred_gs_data(void)
 
 	DARRAY(gs_texture_t*)   textures;
 	DARRAY(gs_stagesurf_t*) stagesurfs;
+	DARRAY(gs_texrender_t*) texrenders;
 
 	da_init(textures);
 	da_init(stagesurfs);
+	da_init(texrenders);
 
 	pthread_mutex_lock(&video->deferred_cleanup.mutex);
 	da_move(textures, video->deferred_cleanup.textures);
 	da_move(stagesurfs, video->deferred_cleanup.stagesurfs);
+	da_move(texrenders, video->deferred_cleanup.texrenders);
 	pthread_mutex_unlock(&video->deferred_cleanup.mutex);
 
 	for (size_t i = 0; i < textures.num; i++)
@@ -446,8 +449,12 @@ void obs_free_deferred_gs_data(void)
 	for (size_t i = 0; i < stagesurfs.num; i++)
 		gs_stagesurface_destroy(stagesurfs.array[i]);
 
+	for (size_t i = 0; i < texrenders.num; i++)
+		gs_texrender_destroy(texrenders.array[i]);
+
 	da_free(textures);
 	da_free(stagesurfs);
+	da_free(texrenders);
 }
 
 static void obs_free_graphics(void)

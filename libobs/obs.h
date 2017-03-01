@@ -241,6 +241,7 @@ struct obs_source_frame {
 enum obs_graphics_defer_cleanup_type {
 	OBS_CLEANUP_DEFER_TEXTURE,
 	OBS_CLEANUP_DEFER_STAGESURF,
+	OBS_CLEANUP_DEFER_TEXRENDER,
 };
 struct obs_graphics_defer_cleanup {
 	void                                 *ptr;

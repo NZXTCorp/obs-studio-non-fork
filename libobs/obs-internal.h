@@ -270,6 +270,7 @@ struct obs_core_video {
 		pthread_mutex_t             mutex;
 		DARRAY(gs_texture_t*)       textures;
 		DARRAY(gs_stagesurf_t*)     stagesurfs;
+		DARRAY(gs_texrender_t*)     texrenders;
 	}                               deferred_cleanup;
 };
 
