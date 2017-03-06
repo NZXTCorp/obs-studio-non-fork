@@ -40,6 +40,9 @@ class WASAPISource {
 	bool                        useDeviceTiming = false;
 	bool                        isDefaultDevice = false;
 
+	signal_handler_t            *sig = nullptr;
+	calldata_t                  acquired_calldata = { 0 };
+
 	bool                        reconnecting = false;
 	bool                        previouslyFailed = false;
 	WinHandle                   reconnectThread;
@@ -182,6 +185,12 @@ WASAPISource::WASAPISource(obs_data_t *settings, obs_source_t *source_,
 	receiveSignal = CreateEvent(nullptr, false, false, nullptr);
 	if (!receiveSignal.Valid())
 		throw "Could not create receive signal";
+
+	sig = obs_source_get_signal_handler(source);
+	signal_handler_add(sig, "void acquired(ptr source, bool active)");
+
+	calldata_init(&acquired_calldata);
+	calldata_set_ptr(&acquired_calldata, "source", source);
 
 	Start();
 }
@@ -489,6 +498,9 @@ bool WASAPISource::TryInitialize()
 					device_id.c_str() : device_name.c_str(),
 				error);
 	}
+
+	calldata_set_bool(&acquired_calldata, "active", active);
+	signal_handler_signal(sig, "acquired", &acquired_calldata);
 
 	previouslyFailed = !active;
 	return active;
