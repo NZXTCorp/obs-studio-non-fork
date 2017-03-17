@@ -112,18 +112,21 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 			break;
 		}
 
+		SetLastError(NO_ERROR);
 		success = !!GetOverlappedResult(pipe->handle, &pipe->overlap,
 				&bytes, true);
 		if (!success || !bytes) {
 			DWORD res = GetLastError();
-			if (res != ERROR_MORE_DATA)
-				break;
 
-			capacity *= 2;
-			uint8_t *new_data = realloc(read_data, capacity);
-			if (!new_data)
+			if (res == ERROR_MORE_DATA) {
+				capacity *= 2;
+				uint8_t *new_data = realloc(read_data, capacity);
+				if (!new_data)
+					break;
+				read_data = new_data;
+
+			} else if (res)
 				break;
-			read_data = new_data;
 		}
 
 		size += bytes;
