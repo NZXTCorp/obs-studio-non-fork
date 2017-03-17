@@ -131,7 +131,7 @@ static DWORD CALLBACK ipc_pipe_internal_server_thread(LPVOID param)
 
 		size += bytes;
 
-		if (success) {
+		if (success && size) {
 			pipe->read_callback(pipe->param, read_data, size);
 			size = 0;
 		}
