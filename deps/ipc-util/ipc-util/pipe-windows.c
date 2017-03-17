@@ -22,7 +22,7 @@
 
 static inline bool ipc_pipe_internal_create_events(ipc_pipe_server_t *pipe)
 {
-	pipe->ready_event = CreateEvent(NULL, false, false, NULL);
+	pipe->ready_event = CreateEvent(NULL, true, false, NULL);
 	pipe->stop_event = CreateEvent(NULL, true, false, NULL);
 	return !!pipe->ready_event && !!pipe->stop_event;
 }
