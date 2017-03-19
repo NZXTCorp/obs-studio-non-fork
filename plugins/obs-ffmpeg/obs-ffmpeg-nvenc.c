@@ -139,6 +139,10 @@ static bool nvenc_update(void *data, obs_data_t *settings)
 	const struct video_output_info *voi = video_output_get_info(video);
 	struct video_scale_info info;
 
+	/* The "default" preset has been deprecated */
+	if (preset && astrcmpi(preset, "default") == 0)
+		preset = "hq";
+
 	info.format = voi->format;
 	info.colorspace = voi->colorspace;
 	info.range = voi->range;
@@ -345,7 +349,7 @@ static void nvenc_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_int(settings, "bitrate", 2500);
 	obs_data_set_default_int(settings, "keyint_sec", 0);
-	obs_data_set_default_string(settings, "preset", "default");
+	obs_data_set_default_string(settings, "preset", "hq");
 	obs_data_set_default_string(settings, "profile", "main");
 	obs_data_set_default_string(settings, "level", "auto");
 	obs_data_set_default_bool(settings, "cbr", false);
@@ -383,7 +387,6 @@ static obs_properties_t *nvenc_properties(void *unused)
 #define add_preset(val) \
 	obs_property_list_add_string(p, obs_module_text("NVENC.Preset." val), \
 			val)
-	add_preset("default");
 	add_preset("hq");
 	add_preset("hp");
 	add_preset("bd");
