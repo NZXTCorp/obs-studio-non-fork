@@ -554,7 +554,8 @@ static void d3d9_init(IDirect3DDevice9 *device,
 	}
 
 	if (global_hook_info->force_shmem ||
-	    (!d3d9ex && data.patch == -1 && !has_d3d9ex_bool_offset)) {
+	    (!d3d9ex && data.patch == -1 && !has_d3d9ex_bool_offset) ||
+		data.dxgi_format == DXGI_FORMAT_UNKNOWN) {
 		success = d3d9_shmem_init(cx, cy, window);
 	} else {
 		success = d3d9_shtex_init(cx, cy, window);
