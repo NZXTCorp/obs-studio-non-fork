@@ -293,6 +293,7 @@ static inline bool gl_shtex_init_d3d11(void)
 	if (!d3d11) {
 		hlog("gl_shtex_init_d3d11: failed to load D3D11.dll: %d",
 				GetLastError());
+		global_hook_info->force_shmem = true;
 		return false;
 	}
 

@@ -145,6 +145,7 @@ static inline bool shex_init_d3d11()
 	d3d11 = load_system_library("d3d11.dll");
 	if (!d3d11) {
 		hlog("d3d9_init: Failed to load D3D11");
+		global_hook_info->force_shmem = true;
 		return false;
 	}
 
