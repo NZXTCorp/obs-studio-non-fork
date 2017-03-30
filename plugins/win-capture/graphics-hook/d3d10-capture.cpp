@@ -477,11 +477,18 @@ static bool d3d10_shmem_init(HWND window)
 {
 	data.using_shtex = false;
 
+	static bool d3d10_shmem_init_buffers_logged = false;
 	for (size_t i = 0; i < NUM_BUFFERS; i++) {
 		if (!d3d10_shmem_init_buffers(i)) {
+			if (!d3d10_shmem_init_buffers_logged) {
+				hlog("d3d10_shmem_init: failed to init buffer %d", i);
+				d3d10_shmem_init_buffers_logged = true;
+			}
 			return false;
 		}
 	}
+	d3d10_shmem_init_buffers_logged = false;
+
 	if (!capture_init_shmem(&data.shmem_info, window,
 				data.base_cx, data.base_cy, data.cx, data.cy,
 				data.pitch, data.format, false)) {
@@ -520,6 +527,12 @@ static bool d3d10_shtex_init(HWND window)
 
 static void d3d10_init(IDXGISwapChain *swap)
 {
+	static bool d3d10_init_call_logged = false;
+	if (!d3d10_init_call_logged) {
+		hlog("d3d10_init called");
+		d3d10_init_call_logged = true;
+	}
+
 	bool success = true;
 	HWND window;
 	HRESULT hr;
@@ -535,9 +548,16 @@ static void d3d10_init(IDXGISwapChain *swap)
 	/* remove the unneeded extra reference */
 	data.device->Release();
 
+	static bool logged_init_format_failure = false;
 	if (!d3d10_init_format(swap, window)) {
+		if (!logged_init_format_failure) {
+			hlog("d3d10_init: failed to init format");
+			logged_init_format_failure = true;
+		}
 		return;
 	}
+	logged_init_format_failure = false;
+
 	if (data.using_scale && !d3d10_init_scaling()) {
 		hlog("d3d10_init: failed to initialize scaling");
 		success = false;
@@ -774,6 +794,12 @@ static inline void d3d10_shmem_capture(ID3D10Resource *backbuffer)
 
 void d3d10_capture(void *swap_ptr, void *backbuffer_ptr)
 {
+	static bool d3d10_capture_call_logged = false;
+	if (!d3d10_capture_call_logged) {
+		hlog("d3d10_capture called");
+		d3d10_capture_call_logged = true;
+	}
+
 	IDXGIResource *dxgi_backbuffer = (IDXGIResource*)backbuffer_ptr;
 	IDXGISwapChain *swap = (IDXGISwapChain*)swap_ptr;
 

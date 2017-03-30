@@ -384,11 +384,18 @@ static bool d3d9_shmem_init(uint32_t cx, uint32_t cy, HWND window)
 {
 	data.using_shtex = false;
 
+	static bool d3d9_shmem_init_buffers_logged = false;
 	for (size_t i = 0; i < NUM_BUFFERS; i++) {
 		if (!d3d9_shmem_init_buffers(i)) {
+			if (!d3d9_shmem_init_buffers_logged) {
+				hlog("d3d9_shmem_init: failed to init buffer %d", i);
+				d3d9_shmem_init_buffers_logged = true;
+			}
 			return false;
 		}
 	}
+	d3d9_shmem_init_buffers_logged = false;
+
 	if (!capture_init_shmem(&data.shmem_info, window, cx, cy,
 				data.cx, data.cy, data.pitch, data.dxgi_format,
 				false)) {
@@ -533,6 +540,12 @@ static void d3d9_init(IDirect3DDevice9 *device,
 	HWND window = nullptr;
 	HRESULT hr;
 
+	static bool d3d9_init_call_logged = false;
+	if (!d3d9_init_call_logged) {
+		hlog("d3d9_init called");
+		d3d9_init_call_logged = true;
+	}
+
 	data.d3d9 = get_system_module("d3d9.dll");
 	data.device = device;
 
@@ -547,11 +560,17 @@ static void d3d9_init(IDirect3DDevice9 *device,
 		data.patch = -1;
 	}
 
+	static bool logged_init_format_failure = false;
 	if (!d3d9_init_format_backbuffer(cx, cy, window, swap, override_window, src_rect)) {
 		if (!d3d9_init_format_swapchain(cx, cy, window, swap, override_window, src_rect)) {
+			if (!logged_init_format_failure) {
+				hlog("d3d9_init: failed to init format");
+				logged_init_format_failure = true;
+			}
 			return;
 		}
 	}
+	logged_init_format_failure = false;
 
 	if (global_hook_info->force_shmem ||
 	    (!d3d9ex && data.patch == -1 && !has_d3d9ex_bool_offset) ||
@@ -678,6 +697,12 @@ static void d3d9_capture(IDirect3DDevice9 *device,
 		IDirect3DSwapChain9 *swap, HWND override_window,
 		const RECT *src_rect)
 {
+	static bool d3d9_capture_call_logged = false;
+	if (!d3d9_capture_call_logged) {
+		hlog("d3d9_capture called");
+		d3d9_capture_call_logged = true;
+	}
+
 	if (capture_should_stop()) {
 		d3d9_free();
 	}
