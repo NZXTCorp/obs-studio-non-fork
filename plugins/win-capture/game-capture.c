@@ -102,6 +102,7 @@ struct game_capture {
 	float                         retry_time;
 	float                         fps_reset_time;
 	float                         retry_interval;
+	int                           retries;
 	bool                          wait_for_target_startup : 1;
 	bool                          showing : 1;
 	bool                          active : 1;
@@ -1727,6 +1728,8 @@ static void game_capture_tick(void *data, float seconds)
 	if (gc->active && !gc->hook_ready && gc->process_id) {
 		gc->hook_ready = get_event_plus_id(EVENT_HOOK_READY,
 				gc->process_id);
+		gc->retry_time = 0;
+		gc->retry_interval = ERROR_RETRY_INTERVAL;
 	}
 
 	if (gc->hook_ready && object_signalled(gc->hook_ready)) {
@@ -1740,6 +1743,16 @@ static void game_capture_tick(void *data, float seconds)
 		if (result != CAPTURE_RETRY && !gc->capturing) {
 			gc->retry_interval = ERROR_RETRY_INTERVAL;
 			stop_capture(gc);
+		}
+
+	} else if (gc->active && gc->hook_ready && !gc->capturing && gc->retry_time > gc->retry_interval) {
+		close_handle(&gc->hook_ready);
+		gc->active = false;
+		if (gc->retries < 10) {
+			gc->retries += 1;
+		} else {
+			gc->error_acquiring = true;
+			warn("giving up after waiting for hook_ready signal after 10 tries");
 		}
 	}
 
