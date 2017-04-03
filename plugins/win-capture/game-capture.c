@@ -718,7 +718,7 @@ static inline bool init_keepalive(struct game_capture *gc)
 
 static inline bool init_texture_mutexes(struct game_capture *gc)
 {
-	if (gc->texture_mutexes[0] && !gc->texture_mutexes[1])
+	if (gc->texture_mutexes[0] && gc->texture_mutexes[1])
 		return true;
 
 	gc->texture_mutexes[0] = get_mutex_plus_id(MUTEX_TEXTURE1,
