@@ -1746,13 +1746,14 @@ static void game_capture_tick(void *data, float seconds)
 		}
 
 	} else if (gc->active && gc->hook_ready && !gc->capturing && gc->retry_time > gc->retry_interval) {
-		close_handle(&gc->hook_ready);
-		gc->active = false;
 		if (gc->retries < 10) {
+			close_handle(&gc->hook_ready);
+			gc->active = false;
+
 			gc->retries += 1;
-		} else {
-			gc->error_acquiring = true;
-			warn("giving up after waiting for hook_ready signal after 10 tries");
+		} else if (gc->retries == 10) {
+			gc->retries += 1;
+			warn("giving up after retrying hook_ready signal after 10 tries");
 		}
 	}
 
