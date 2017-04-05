@@ -70,6 +70,12 @@ static bool setup_dxgi(IDXGISwapChain *swap)
 	IUnknown *device;
 	HRESULT hr;
 
+	static bool setup_dxgi_called = false;
+	if (!setup_dxgi_called) {
+		hlog("setup_dxgi called");
+		setup_dxgi_called = true;
+	}
+
 	/* Call of duty ghosts allows the context to be queried as a d3d10
 	 * context when it's actually a d3d11 context.  Why this is I don't
 	 * quite know. */
@@ -174,6 +180,12 @@ static HRESULT STDMETHODCALLTYPE hook_present(IDXGISwapChain *swap,
 	bool test_draw = (flags & DXGI_PRESENT_TEST) != 0;
 	bool capture;
 	HRESULT hr;
+
+	static bool hook_present_called = false;
+	if (!hook_present_called) {
+		hlog("hook_present called");
+		hook_present_called = true;
+	}
 
 	if (!data.swap && !capture_active()) {
 		setup_dxgi(swap);

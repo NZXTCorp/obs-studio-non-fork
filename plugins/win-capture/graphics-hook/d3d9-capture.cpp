@@ -733,6 +733,12 @@ static inline void present_begin(IDirect3DDevice9 *device,
 {
 	HRESULT hr;
 
+	static bool present_begin_called = false;
+	if (!present_begin_called) {
+		hlog("present_begin called");
+		present_begin_called = true;
+	}
+
 	if (!present_recurse) {
 		hr = get_backbuffer(device, swap, &backbuffer);
 		if (FAILED(hr)) {

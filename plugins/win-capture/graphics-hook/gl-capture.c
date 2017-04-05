@@ -792,6 +792,12 @@ static void gl_capture(HDC hdc)
 
 static inline void gl_swap_begin(HDC hdc)
 {
+	static bool gl_swap_begin_called = false;
+	if (!gl_swap_begin_called) {
+		hlog("gl_swap_begin called");
+		gl_swap_begin_called = true;
+	}
+
 	if (data.swap_recurse++)
 		return;
 
