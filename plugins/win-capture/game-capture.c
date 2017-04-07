@@ -1765,8 +1765,11 @@ static void game_capture_tick(void *data, float seconds)
 
 		if (exit_code != 0) {
 			warn("inject process failed: %ld", (long)exit_code);
-			gc->error_acquiring = true;
 			send_inject_failed(gc, (long)exit_code);
+		}
+
+		if (exit_code != 0 && exit_code != INJECT_ERROR_UNLIKELY_FAIL) {
+			gc->error_acquiring = true;
 
 		} else if (!gc->capturing) {
 			gc->retry_interval = ERROR_RETRY_INTERVAL;
@@ -1788,8 +1791,11 @@ static void game_capture_tick(void *data, float seconds)
 
 		if (code_valid && code != 0) {
 			warn("ipc inject process failed: %ld", (long)code);
-			gc->error_acquiring = true;
 			send_inject_failed(gc, (long)code);
+		}
+
+		if (code_valid && code != 0 && code != INJECT_ERROR_UNLIKELY_FAIL) {
+			gc->error_acquiring = true;
 
 		} else if (code_valid && !gc->capturing) {
 			gc->retry_interval = ERROR_RETRY_INTERVAL;
