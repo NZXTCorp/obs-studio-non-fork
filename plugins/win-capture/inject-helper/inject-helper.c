@@ -88,7 +88,7 @@ static int inject_helper(wchar_t *argv[], const wchar_t *dll)
 
 	id = wcstol(argv[3], NULL, 10);
 	if (id == 0) {
-		fprintf(stderr, "wcstol returned 0 for '%s'", argv[3]);
+		fprintf(stderr, "wcstol returned 0 for '%ls'", argv[3]);
 		return INJECT_ERROR_INVALID_PARAMS;
 	}
 
