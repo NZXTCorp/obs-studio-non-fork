@@ -107,8 +107,9 @@ int inject_library_obf(HANDLE process, const wchar_t *dll,
 	size = (wcslen(dll) + 1) * sizeof(wchar_t);
 	mem = virtual_alloc_ex(process, NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	if (!mem) {
-		fprintf(stderr, "virtual_alloc_ex failed (tried with %llu bytes): %#x\n", (unsigned long long)size, GetLastError());
-		ret = INJECT_ERROR_VALLOC_FAIL;
+		DWORD err = GetLastError();
+		fprintf(stderr, "virtual_alloc_ex failed (tried with %llu bytes): %#x\n", (unsigned long long)size, err);
+		ret = err == ERROR_ACCESS_DENIED ? INJECT_ERROR_VALLOC_DENIED : INJECT_ERROR_VALLOC_FAIL;
 		goto fail;
 	}
 
