@@ -1714,6 +1714,22 @@ static void handle_screenshot(struct game_capture *gc)
 	}
 }
 
+static void handle_injector_exit_code(struct game_capture *gc, DWORD code, const char *ipc)
+{
+	if (code != 0) {
+		warn("%sinject process failed: %ld", ipc, (long)code);
+		send_inject_failed(gc, (long)code);
+	}
+
+	if (code != 0 && code != INJECT_ERROR_UNLIKELY_FAIL) {
+		gc->error_acquiring = true;
+
+	} else if (!gc->capturing) {
+		gc->retry_interval = ERROR_RETRY_INTERVAL;
+		stop_capture(gc);
+	}
+}
+
 static void game_capture_tick(void *data, float seconds)
 {
 	struct game_capture *gc = data;
@@ -1763,18 +1779,7 @@ static void game_capture_tick(void *data, float seconds)
 		GetExitCodeProcess(gc->injector_process, &exit_code);
 		close_handle(&gc->injector_process);
 
-		if (exit_code != 0) {
-			warn("inject process failed: %ld", (long)exit_code);
-			send_inject_failed(gc, (long)exit_code);
-		}
-
-		if (exit_code != 0 && exit_code != INJECT_ERROR_UNLIKELY_FAIL) {
-			gc->error_acquiring = true;
-
-		} else if (!gc->capturing) {
-			gc->retry_interval = ERROR_RETRY_INTERVAL;
-			stop_capture(gc);
-		}
+		handle_injector_exit_code(gc, exit_code, "");
 	}
 
 	if (gc->config.allow_ipc_injector && gc->ipc_injector_active) {
@@ -1786,20 +1791,10 @@ static void game_capture_tick(void *data, float seconds)
 			code = gc->ipc_result;
 		LeaveCriticalSection(&gc->ipc_mutex);
 
-		if (code_valid)
+		if (code_valid) {
 			gc->ipc_injector_active = false;
 
-		if (code_valid && code != 0) {
-			warn("ipc inject process failed: %ld", (long)code);
-			send_inject_failed(gc, (long)code);
-		}
-
-		if (code_valid && code != 0 && code != INJECT_ERROR_UNLIKELY_FAIL) {
-			gc->error_acquiring = true;
-
-		} else if (code_valid && !gc->capturing) {
-			gc->retry_interval = ERROR_RETRY_INTERVAL;
-			stop_capture(gc);
+			handle_injector_exit_code(gc, code, "ipc ");
 		}
 	}
 
