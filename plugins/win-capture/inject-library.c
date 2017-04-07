@@ -145,7 +145,7 @@ fail:
 	if (thread) {
 		CloseHandle(thread);
 	}
-	if (mem) {
+	if (mem && (thread && ret != INJECT_ERROR_UNLIKELY_FAIL)) {
 		virtual_free_ex(process, mem, 0, MEM_RELEASE);
 	}
 	if (last_error != 0) {
