@@ -18,6 +18,9 @@ struct d3d11_data {
 	bool                           using_scale : 1;
 	bool                           multisampled : 1;
 
+	DXGI_FORMAT                    multi_sample_format;
+	ID3D11Texture2D                *multi_sample_tex;
+
 	ID3D11Texture2D                *scale_tex;
 	ID3D11ShaderResourceView       *scale_resource;
 
@@ -79,6 +82,8 @@ void d3d11_free(void)
 		data.raster_state->Release();
 	if (data.vertex_buffer)
 		data.vertex_buffer->Release();
+	if (data.multi_sample_tex)
+		data.multi_sample_tex->Release();
 
 	capture_free();
 
@@ -136,7 +141,7 @@ static bool create_d3d11_tex(uint32_t cx, uint32_t cy,
 		ID3D11Texture2D **tex,
 		ID3D11ShaderResourceView **resource,
 		ID3D11RenderTargetView **render_target,
-		HANDLE *handle)
+		HANDLE *handle, DXGI_FORMAT *format=nullptr)
 {
 	UINT flags = 0;
 	UINT misc_flags = 0;
@@ -154,7 +159,7 @@ static bool create_d3d11_tex(uint32_t cx, uint32_t cy,
 	desc.Height                    = cy;
 	desc.MipLevels                 = 1;
 	desc.ArraySize                 = 1;
-	desc.Format                    = data.format;
+	desc.Format                    = format ? *format : data.format;
 	desc.BindFlags                 = flags;
 	desc.SampleDesc.Count          = 1;
 	desc.Usage                     = D3D11_USAGE_DEFAULT;
@@ -168,7 +173,7 @@ static bool create_d3d11_tex(uint32_t cx, uint32_t cy,
 
 	if (!!resource) {
 		D3D11_SHADER_RESOURCE_VIEW_DESC res_desc = {};
-		res_desc.Format = data.format;
+		res_desc.Format = format ? *format : data.format;
 		res_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 		res_desc.Texture2D.MipLevels = 1;
 
@@ -229,6 +234,17 @@ static inline bool d3d11_init_format(IDXGISwapChain *swap, HWND &window)
 	window = desc.OutputWindow;
 	data.base_cx = desc.BufferDesc.Width;
 	data.base_cy = desc.BufferDesc.Height;
+
+	// directly resolving from multisampled DXGI_FORMAT_R8G8B8A8_UNORM_SRGB to DXGI_FORMAT_R8G8B8A8_UNORM doesn't seem to work
+	// in Yooka-Laylee, so we use an intermediate texture as target for the resolve step and then copy to the non-SRGB texture
+	if (data.multisampled && data.format != desc.BufferDesc.Format) {
+		data.multi_sample_format = desc.BufferDesc.Format;
+		if (!create_d3d11_tex(desc.BufferDesc.Width, desc.BufferDesc.Height, &data.multi_sample_tex,
+			nullptr, nullptr, nullptr, &data.multi_sample_format)) {
+			hlog("d3d11_init_format: Failed to create intermediate multisampling texture");
+			return false;
+		}
+	}
 
 	if (data.using_scale) {
 		data.cx = global_hook_info->cx;
@@ -763,7 +779,12 @@ static inline void d3d11_scale_texture(ID3D11RenderTargetView *target,
 static inline void d3d11_copy_texture(ID3D11Resource *dst, ID3D11Resource *src)
 {
 	if (data.multisampled) {
-		data.context->ResolveSubresource(dst, 0, src, 0, data.format);
+		if (data.multi_sample_tex) {
+			data.context->ResolveSubresource(data.multi_sample_tex, 0, src, 0, data.multi_sample_format);
+			data.context->CopyResource(dst, data.multi_sample_tex);
+		} else {
+			data.context->ResolveSubresource(dst, 0, src, 0, data.format);
+		}
 	} else {
 		data.context->CopyResource(dst, src);
 	}
