@@ -227,6 +227,11 @@ static inline bool d3d10_init_format(IDXGISwapChain *swap, HWND &window)
 	data.base_cx = desc.BufferDesc.Width;
 	data.base_cy = desc.BufferDesc.Height;
 
+	if (data.format != desc.BufferDesc.Format && data.multisampled) {
+		hlog("d3d10_init_format: using multisampled textures with differing formats: %#x -> %#x",
+			desc.BufferDesc.Format, data.format);
+	}
+
 	if (data.using_scale) {
 		data.cx = global_hook_info->cx;
 		data.cy = global_hook_info->cy;
