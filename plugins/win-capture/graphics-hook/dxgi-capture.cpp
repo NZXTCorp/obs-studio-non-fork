@@ -19,6 +19,22 @@ typedef HRESULT (STDMETHODCALLTYPE *present_t)(IDXGISwapChain*, UINT, UINT);
 static struct func_hook resize_buffers;
 static struct func_hook present;
 
+static struct {
+	const uint64_t present_grace_time = 500000000; // 500 ms
+	const int present_grace_count = 15; // number of times present was called after the grace time was over
+
+	bool enabled = false;
+
+	uint64_t last_present_time = 0;
+	int present_count = 0;
+
+	void reset()
+	{
+		last_present_time = os_gettime_ns();
+		present_count = 0;
+	}
+} swapchain_timeout;
+
 struct dxgi_swap_data {
 	IDXGISwapChain *swap;
 	void (*capture)(void*, void*);
@@ -194,9 +210,37 @@ static HRESULT STDMETHODCALLTYPE hook_present(IDXGISwapChain *swap,
 
 	if (!data.swap && !capture_active()) {
 		setup_dxgi(swap);
+
+		swapchain_timeout.reset();
 	}
 
 	capture = !test_draw && swap == data.swap && !!data.capture;
+	if (!test_draw && !!data.capture && !capture) {
+		bool grace_time_expired = os_gettime_ns() - swapchain_timeout.last_present_time > swapchain_timeout.present_grace_time;
+		bool timeout_reached =  grace_time_expired &&
+			swapchain_timeout.present_count > swapchain_timeout.present_grace_count;
+
+		static bool timeout_reached_logged = false;
+		if (timeout_reached && swapchain_timeout.enabled) {
+			hlog("old swap chain timed out, freeing capture");
+			free_dxgi();
+			capture = false;
+
+			swapchain_timeout.reset();
+
+		} else if (timeout_reached && !timeout_reached_logged) {
+			hlog("reached swapchain timeout");
+			timeout_reached_logged = true;
+		}
+
+		if (grace_time_expired) {
+			swapchain_timeout.present_count += 1;
+		}
+
+	} else if (capture) {
+		swapchain_timeout.reset();
+	}
+
 	if (capture && !capture_overlay) {
 		backbuffer = get_dxgi_backbuffer(swap);
 
