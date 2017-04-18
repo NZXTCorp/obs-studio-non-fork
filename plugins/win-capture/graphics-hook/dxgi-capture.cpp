@@ -130,14 +130,8 @@ static bool setup_dxgi(IDXGISwapChain *swap)
 	return false;
 }
 
-static bool resize_buffers_called = false;
-
-static HRESULT STDMETHODCALLTYPE hook_resize_buffers(IDXGISwapChain *swap,
-		UINT buffer_count, UINT width, UINT height, DXGI_FORMAT format,
-		UINT flags)
+static void free_dxgi()
 {
-	HRESULT hr;
-
 	if (!!data.free)
 		data.free();
 
@@ -149,6 +143,17 @@ static HRESULT STDMETHODCALLTYPE hook_resize_buffers(IDXGISwapChain *swap,
 	data.capture = nullptr;
 
 	data.draw = nullptr;
+}
+
+static bool resize_buffers_called = false;
+
+static HRESULT STDMETHODCALLTYPE hook_resize_buffers(IDXGISwapChain *swap,
+		UINT buffer_count, UINT width, UINT height, DXGI_FORMAT format,
+		UINT flags)
+{
+	HRESULT hr;
+
+	free_dxgi();
 
 	unhook(&resize_buffers);
 	resize_buffers_t call = (resize_buffers_t)resize_buffers.call_addr;
