@@ -101,6 +101,10 @@ static bool setup_dxgi(IDXGISwapChain *swap)
 		ignore_d3d10 = true;
 	}
 
+	if (_strcmpi(process_name, "YookaLaylee64.exe") == 0) {
+		swapchain_timeout.enabled = true;
+	}
+
 	if (!dxgi_check_luid(swap)) {
 		hlog("setup_dxgi: LUIDs didn't match, using shared memory capture");
 		global_hook_info->force_shmem = true;
