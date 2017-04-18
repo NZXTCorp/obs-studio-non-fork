@@ -675,18 +675,11 @@ static inline bool open_target_process(struct game_capture *gc)
 		goto check_alive;
 
 	gc->target_process = open_process(
-			PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | SYNCHRONIZE,
+			PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
 			false, gc->process_id);
 	if (!gc->target_process) {
-		info("process '%ld' inaccessible for direct hook", (long)gc->process_id);
-
-		gc->target_process = open_process(PROCESS_QUERY_LIMITED_INFORMATION |
-				SYNCHRONIZE, false, gc->process_id);
-		
-		if (!gc->target_process) {
-			warn("process '%ld' inaccessible, giving up", (long)gc->process_id);
-			return false;
-		}
+		warn("process '%ld' inaccessible, giving up", (long)gc->process_id);
+		return false;
 	}
 
 	gc->process_is_64bit = is_64bit_process(gc->target_process);
