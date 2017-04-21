@@ -111,6 +111,10 @@ static void rtmp_stream_destroy(void *data)
 		os_event_destroy(stream->send_thread_signaled_exit);
 		pthread_mutex_destroy(&stream->write_buf_mutex);
 
+		circlebuf_free(&stream->packet_strain);
+		circlebuf_free(&stream->sizes_sent);
+		pthread_mutex_destroy(&stream->packet_strain_mutex);
+
 #ifdef TEST_FRAMEDROPS
 		circlebuf_free(&stream->droptest_info);
 #endif
@@ -137,6 +141,11 @@ static void *rtmp_stream_create(obs_data_t *settings, obs_output_t *output)
 
 	if (pthread_mutex_init(&stream->write_buf_mutex, NULL) != 0) {
 		warn("Failed to initialize write buffer mutex");
+		goto fail;
+	}
+
+	if (pthread_mutex_init(&stream->packet_strain_mutex, NULL) != 0) {
+		warn("Failed to initialize packet strain mutex");
 		goto fail;
 	}
 
@@ -288,6 +297,107 @@ static void droptest_cap_data_rate(struct rtmp_stream *stream, size_t size)
 }
 #endif
 
+struct packet_strain_data {
+	uint64_t time;
+	union {
+		int len;
+		float strain;
+	};
+};
+
+static void prune_packets_sent(struct circlebuf *buf)
+{
+	if (!buf->size)
+		return;
+
+	struct packet_strain_data last;
+	circlebuf_peek_back(buf, &last, sizeof(last));
+
+	while (buf->size) {
+		struct packet_strain_data front;
+		circlebuf_peek_front(buf, &front, sizeof(front));
+		if ((buf->size > (sizeof(last) * 2)) && (last.time - front.time) > 1000000000)
+			circlebuf_pop_front(buf, &front, sizeof(front));
+		else
+			break;
+	}
+}
+
+void update_packets_sent(struct rtmp_stream *stream, int sent)
+{
+	if (!stream->autotune)
+		return;
+
+	struct packet_strain_data data = {
+		os_gettime_ns()
+	};
+	data.len = sent;
+
+	pthread_mutex_lock(&stream->packet_strain_mutex);
+	circlebuf_push_back(&stream->sizes_sent, &data, sizeof(data));
+	prune_packets_sent(&stream->sizes_sent);
+	pthread_mutex_unlock(&stream->packet_strain_mutex);
+}
+
+static float sent_size(struct rtmp_stream *stream)
+{
+	pthread_mutex_lock(&stream->packet_strain_mutex);
+	if (!stream->sizes_sent.size) {
+		pthread_mutex_unlock(&stream->packet_strain_mutex);
+		return 0.;
+	}
+
+	double sent = 0.;
+
+	size_t elems = stream->sizes_sent.size / sizeof(struct packet_strain_data);
+	struct packet_strain_data *data = stream->sizes_sent.data;
+	for (size_t i = 0; i < elems; i++)
+		sent += data[i].len;
+
+	sent /= (data[elems - 1].time - data[0].time) / 1000000000.;
+	pthread_mutex_unlock(&stream->packet_strain_mutex);
+
+	return sent;
+}
+
+static float compute_strain(struct rtmp_stream *stream)
+{
+	pthread_mutex_lock(&stream->packet_strain_mutex);
+	if (!stream->packet_strain.size) {
+		pthread_mutex_unlock(&stream->packet_strain_mutex);
+		return 0.;
+	}
+
+	double strain = 0.;
+
+	size_t elems = stream->packet_strain.size / sizeof(struct packet_strain_data);
+	struct packet_strain_data *data = stream->packet_strain.data;
+	for (size_t i = 0; i < elems; i++)
+		strain += data[i].strain;
+
+	pthread_mutex_unlock(&stream->packet_strain_mutex);
+
+	return strain / elems;
+}
+
+void update_packet_strain(struct rtmp_stream *stream)
+{
+	if (!stream->autotune)
+		return;
+
+	float strain = stream->write_buf_len / (double)stream->write_buf_size;
+
+	struct packet_strain_data data = {
+		os_gettime_ns()
+	};
+	data.strain = strain;
+
+	pthread_mutex_lock(&stream->packet_strain_mutex);
+	circlebuf_push_back(&stream->packet_strain, &data, sizeof(data));
+	prune_packets_sent(&stream->packet_strain);
+	pthread_mutex_unlock(&stream->packet_strain_mutex);
+}
+
 static int socket_queue_data(RTMPSockBuf *sb, const char *data, int len, void *arg)
 {
 	struct rtmp_stream *stream = arg;
@@ -312,6 +422,8 @@ retry_send:
 
 	memcpy(stream->write_buf + stream->write_buf_len, data, len);
 	stream->write_buf_len += len;
+
+	update_packet_strain(stream);
 
 	pthread_mutex_unlock(&stream->write_buf_mutex);
 
@@ -601,11 +713,14 @@ static int init_send(struct rtmp_stream *stream)
 			}
 		}
 
+		stream->audio_bitrate = 0;
+
 		obs_encoder_t *aencoder = obs_output_get_audio_encoder(context, 0);
 		if (aencoder) {
 			obs_data_t *params = obs_encoder_get_settings(aencoder);
 			if (params) {
 				int bitrate = obs_data_get_int(params, "bitrate");
+				stream->audio_bitrate += bitrate;
 				total_bitrate += bitrate;
 				obs_data_release(params);
 			}
@@ -845,6 +960,21 @@ static bool init_connect(struct rtmp_stream *stream)
 	stream->low_latency_mode = obs_data_get_bool(settings,
 			OPT_LOWLATENCY_ENABLED);
 
+	if (stream->new_socket_loop) {
+		stream->autotune = obs_data_get_bool(settings,
+				OPT_AUTOTUNE_ENABLED);
+		if (stream->autotune) {
+			obs_encoder_t *vencoder = obs_output_get_video_encoder(stream->output);
+			if (vencoder && obs_encoder_can_update(vencoder)) {
+				stream->target_bitrate = obs_data_get_int(settings,
+						OPT_TARGET_BITRATE);
+				stream->current_bitrate = stream->target_bitrate;
+			} else {
+				stream->autotune = false;
+			}
+		}
+	}
+
 	obs_data_release(settings);
 	return true;
 }
@@ -988,11 +1118,80 @@ static void check_to_drop_frames(struct rtmp_stream *stream, bool pframes)
 	}
 }
 
+static void update_bitrate(struct rtmp_stream *stream)
+{
+	obs_encoder_t *encoder = obs_output_get_video_encoder(stream->output);
+	if (!encoder)
+		return;
+
+	obs_data_t *settings = obs_encoder_get_settings(encoder);
+	obs_data_set_int(settings, "bitrate", stream->current_bitrate);
+	obs_encoder_update(encoder, settings);
+	obs_data_release(settings);
+
+	stream->adjustment_frame_id = obs_track_next_frame();
+	stream->adjustment_frame_id_valid = true;
+
+	stream->last_adjustment_time = os_gettime_ns();
+}
+
+static void handle_packet_strain(struct rtmp_stream *stream, bool dropped_frames)
+{
+	float strain = compute_strain(stream);
+
+	uint64_t current_time = os_gettime_ns();
+	float sent_bitrate = sent_size(stream) * 8 / 1000;
+	float diff = (sent_bitrate - stream->current_bitrate - stream->audio_bitrate) / stream->current_bitrate;
+
+	uint32_t old_bitrate = stream->current_bitrate;
+	if (stream->last_adjustment_time + 1500000000 < current_time && strain > .25 && stream->current_bitrate > 100) {
+		stream->current_bitrate *= 1 - strain / 4;
+		if (stream->current_bitrate < 100)
+			stream->current_bitrate = 100;
+
+		info("Lowering bitrate from %u to %u (strain: %g, sent: %g Mbit/s)",
+			old_bitrate, stream->current_bitrate, strain, sent_bitrate / 1000);
+		update_bitrate(stream);
+
+	} else if (stream->last_adjustment_time + 5000000000 < current_time && stream->current_bitrate < stream->target_bitrate &&
+		strain < .05 && stream->last_strain < .05 && !dropped_frames &&
+		fabsf(diff) <= 0.075) {
+		stream->current_bitrate += stream->target_bitrate * (0.05 - ((strain + stream->last_strain) / 2));
+		if (stream->current_bitrate > stream->target_bitrate)
+			stream->current_bitrate = stream->target_bitrate;
+
+		info("Increasing bitrate from %u to %u (strain: %g, last: %g, sent: %g Mbit/s)",
+			old_bitrate, stream->current_bitrate, strain, stream->last_strain, sent_bitrate / 1000);
+		update_bitrate(stream);
+	}
+
+	stream->last_strain = strain;
+}
+
 static bool add_video_packet(struct rtmp_stream *stream,
 		struct encoder_packet *packet)
 {
+	int prev_dropped = stream->dropped_frames;
 	check_to_drop_frames(stream, false);
 	check_to_drop_frames(stream, true);
+	bool dropped_frames = stream->dropped_frames != prev_dropped;
+
+	if (stream->adjustment_frame_id_valid) {
+		if (packet->tracked_id == stream->adjustment_frame_id) {
+			uint64_t buffer_length = 0;
+			if (stream->packets.size) {
+				struct encoder_packet first;
+				circlebuf_peek_front(&stream->packets, &first, sizeof(first));
+				buffer_length = packet->dts_usec - first.dts_usec;
+			}
+
+			stream->last_adjustment_time = os_gettime_ns() + buffer_length;
+			stream->adjustment_frame_id_valid = false;
+		}
+
+	} else if (stream->autotune) {
+		handle_packet_strain(stream, dropped_frames);
+	}
 
 	/* if currently dropping frames, drop packets until it reaches the
 	 * desired priority */

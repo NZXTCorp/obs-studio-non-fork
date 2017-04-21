@@ -31,6 +31,8 @@
 #define OPT_BIND_IP "bind_ip"
 #define OPT_NEWSOCKETLOOP_ENABLED "new_socket_loop_enabled"
 #define OPT_LOWLATENCY_ENABLED "low_latency_mode_enabled"
+#define OPT_AUTOTUNE_ENABLED "autotune_enabled"
+#define OPT_TARGET_BITRATE "target_bitrate"
 
 //#define TEST_FRAMEDROPS
 
@@ -105,6 +107,20 @@ struct rtmp_stream {
 	os_event_t       *buffer_has_data_event;
 	os_event_t       *socket_available_event;
 	os_event_t       *send_thread_signaled_exit;
+
+	bool             autotune;
+	uint32_t         target_bitrate;
+	uint32_t         current_bitrate;
+	uint32_t         audio_bitrate;
+	uint64_t         last_adjustment_time;
+	bool             dropped_frames_recently;
+	float            last_strain;
+	bool             adjustment_frame_id_valid;
+	video_tracked_frame_id adjustment_frame_id;
+
+	pthread_mutex_t  packet_strain_mutex;
+	struct circlebuf packet_strain;
+	struct circlebuf sizes_sent;
 };
 
 #ifdef _WIN32

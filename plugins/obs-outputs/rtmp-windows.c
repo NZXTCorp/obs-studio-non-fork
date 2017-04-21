@@ -144,6 +144,7 @@ enum data_ret {
 	RET_CONTINUE
 };
 
+void update_packets_sent(struct rtmp_stream *stream, int sent);
 static enum data_ret write_data(struct rtmp_stream *stream, bool *can_write,
 		uint64_t *last_send_time, size_t latency_packet_size,
 		int delay_time)
@@ -185,6 +186,8 @@ static enum data_ret write_data(struct rtmp_stream *stream, bool *can_write,
 		stream->write_buf_len -= ret;
 
 		*last_send_time = os_gettime_ns() / 1000000;
+
+		update_packets_sent(stream, ret);
 
 		os_event_signal(stream->buffer_space_available_event);
 	} else {
