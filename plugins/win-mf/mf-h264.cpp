@@ -57,7 +57,7 @@ struct MFH264_Encoder {
 #define TEXT_VBR             MFTEXT("VBR")
 #define TEXT_CQP             MFTEXT("CQP")
 
-#define MFP(x) "mf_h264_" ## x
+#define MFP(x) x
 #define MFP_USE_ADVANCED     MFP("use_advanced")
 #define MFP_USE_LOWLAT       MFP("use_low_latency")
 #define MFP_B_FRAMES         MFP("b_frames")
