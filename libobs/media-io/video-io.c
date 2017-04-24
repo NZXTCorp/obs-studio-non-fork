@@ -181,6 +181,7 @@ static inline bool video_output_cur_frame(struct video_output *video)
 
 	} else {
 		frame_info->frame.tracked_id = 0;
+		++video->skipped_frames;
 	}
 
 	pthread_mutex_unlock(&video->data_mutex);
@@ -367,6 +368,11 @@ bool video_output_connect(video_t *video,
 
 	pthread_mutex_lock(&video->input_mutex);
 
+	if (video->inputs.num == 0) {
+		video->skipped_frames = 0;
+		video->total_frames = 0;
+	}
+
 	if (video_get_input_idx(video, callback, param) == DARRAY_INVALID) {
 		struct video_input input;
 		memset(&input, 0, sizeof(input));
@@ -437,7 +443,6 @@ bool video_output_lock_frame(video_t *video, struct video_frame *frame,
 	pthread_mutex_lock(&video->data_mutex);
 
 	if (video->available_frames == 0) {
-		video->skipped_frames += count;
 		video->cache[video->last_added].count += count;
 		locked = false;
 
