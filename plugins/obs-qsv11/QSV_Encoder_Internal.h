@@ -85,28 +85,28 @@ protected:
 	int          GetFreeTaskIndex(Task* pTaskPool, mfxU16 nPoolSize);
 
 private:
-	mfxIMPL                        m_impl;
-	mfxVersion                     m_ver;
+	mfxIMPL                        m_impl = { 0 };
+	mfxVersion                     m_ver = { 0 };
 	MFXVideoSession                m_session;
-	mfxFrameAllocator              m_mfxAllocator;
-	mfxVideoParam                  m_mfxEncParams;
-	mfxFrameAllocResponse          m_mfxResponse;
-	mfxFrameSurface1**             m_pmfxSurfaces;
-	mfxU16                         m_nSurfNum;
-	MFXVideoENCODE*                m_pmfxENC;
+	mfxFrameAllocator              m_mfxAllocator = { 0 };
+	mfxVideoParam                  m_mfxEncParams = { 0 };
+	mfxFrameAllocResponse          m_mfxResponse = { 0 };
+	mfxFrameSurface1**             m_pmfxSurfaces = nullptr;
+	mfxU16                         m_nSurfNum = 0;
+	MFXVideoENCODE*                m_pmfxENC = nullptr;
 	mfxU8                          m_SPSBuffer[100];
 	mfxU8                          m_PPSBuffer[100];
-	mfxU16                         m_nSPSBufferSize;
-	mfxU16                         m_nPPSBufferSize;
+	mfxU16                         m_nSPSBufferSize = 0;
+	mfxU16                         m_nPPSBufferSize = 0;
 	mfxVideoParam                  m_parameter;
 	mfxExtCodingOption2            m_co2;
 	mfxExtCodingOption             m_co;
-	mfxU16                         m_nTaskPool;
-	Task*                          m_pTaskPool;
-	int                            m_nTaskIdx;
-	int                            m_nFirstSyncTask;
-	mfxBitstream                   m_outBitstream;
-	bool                           m_bIsWindows8OrGreater;
-	bool                           m_bUseD3D11;
+	mfxU16                         m_nTaskPool = 0;
+	Task*                          m_pTaskPool = nullptr;
+	int                            m_nTaskIdx = 0;
+	int                            m_nFirstSyncTask = 0;
+	mfxBitstream                   m_outBitstream = { 0 };
+	bool                           m_bIsWindows8OrGreater = false;
+	bool                           m_bUseD3D11 = false;
 };
 
