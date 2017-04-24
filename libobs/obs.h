@@ -1473,6 +1473,9 @@ EXPORT obs_properties_t *obs_get_encoder_properties(const char *id);
  */
 EXPORT obs_properties_t *obs_encoder_properties(const obs_encoder_t *encoder);
 
+EXPORT bool obs_can_encoder_update(const char *id);
+EXPORT bool obs_encoder_can_update(obs_encoder_t *encoder);
+
 /**
  * Updates the settings of the encoder context.  Usually used for changing
  * bitrate while active

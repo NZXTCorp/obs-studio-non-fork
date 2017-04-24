@@ -323,6 +323,20 @@ obs_properties_t *obs_encoder_properties(const obs_encoder_t *encoder)
 	return NULL;
 }
 
+bool obs_can_encoder_update(const char *id)
+{
+	const struct obs_encoder_info *ei = find_encoder(id);
+	return ei && ei->update;
+}
+
+bool obs_encoder_can_update(obs_encoder_t *encoder)
+{
+	if (!obs_encoder_valid(encoder, "obs_encoder_can_update"))
+		return false;
+
+	return !!encoder->info.update;
+}
+
 void obs_encoder_update(obs_encoder_t *encoder, obs_data_t *settings)
 {
 	if (!obs_encoder_valid(encoder, "obs_encoder_update"))
