@@ -955,7 +955,6 @@ static bool init_connect(struct rtmp_stream *stream)
 	os_atomic_set_bool(&stream->disconnected, false);
 	stream->total_bytes_sent = 0;
 	stream->dropped_frames   = 0;
-	stream->min_drop_dts_usec= 0;
 	stream->min_priority     = 0;
 
 	settings = obs_output_get_settings(stream->output);
@@ -1037,7 +1036,6 @@ static inline bool add_packet(struct rtmp_stream *stream,
 {
 	circlebuf_push_back(&stream->packets, packet,
 			sizeof(struct encoder_packet));
-	stream->last_dts_usec = packet->dts_usec;
 	return true;
 }
 
@@ -1047,7 +1045,7 @@ static inline size_t num_buffered_packets(struct rtmp_stream *stream)
 }
 
 static void drop_frames(struct rtmp_stream *stream, const char *name,
-		int highest_priority, int64_t *p_min_dts_usec)
+		int highest_priority, bool pframes)
 {
 	struct circlebuf new_buf            = {0};
 	uint64_t         last_drop_dts_usec = 0;
@@ -1083,8 +1081,8 @@ static void drop_frames(struct rtmp_stream *stream, const char *name,
 
 	if (stream->min_priority < highest_priority)
 		stream->min_priority = highest_priority;
-
-	*p_min_dts_usec = last_drop_dts_usec;
+	if (!num_frames_dropped)
+		return;
 
 	stream->dropped_frames += num_frames_dropped;
 #ifdef _DEBUG
@@ -1095,6 +1093,23 @@ static void drop_frames(struct rtmp_stream *stream, const char *name,
 #endif
 }
 
+static bool find_first_video_packet(struct rtmp_stream *stream,
+		struct encoder_packet *first)
+{
+	size_t count = stream->packets.size / sizeof(*first);
+
+	for (size_t i = 0; i < count; i++) {
+		struct encoder_packet *cur = circlebuf_data(&stream->packets,
+				i * sizeof(*first));
+		if (cur->type == OBS_ENCODER_VIDEO && !cur->keyframe) {
+			*first = *cur;
+			return true;
+		}
+	}
+
+	return false;
+}
+
 static void check_to_drop_frames(struct rtmp_stream *stream, bool pframes)
 {
 	struct encoder_packet first;
@@ -1103,9 +1118,6 @@ static void check_to_drop_frames(struct rtmp_stream *stream, bool pframes)
 	const char *name = pframes ? "p-frames" : "b-frames";
 	int priority = pframes ?
 		OBS_NAL_PRIORITY_HIGHEST : OBS_NAL_PRIORITY_HIGH;
-	int64_t *p_min_dts_usec = pframes ?
-		&stream->pframe_min_drop_dts_usec :
-		&stream->min_drop_dts_usec;
 	int64_t drop_threshold = pframes ?
 		stream->pframe_drop_threshold_usec :
 		stream->drop_threshold_usec;
@@ -1113,10 +1125,7 @@ static void check_to_drop_frames(struct rtmp_stream *stream, bool pframes)
 	if (num_packets < 5)
 		return;
 
-	circlebuf_peek_front(&stream->packets, &first, sizeof(first));
-
-	/* do not drop frames if frames were just dropped within this time */
-	if (first.dts_usec < *p_min_dts_usec)
+	if (!find_first_video_packet(stream, &first))
 		return;
 
 	/* if the amount of time stored in the buffered packets waiting to be
@@ -1125,7 +1134,7 @@ static void check_to_drop_frames(struct rtmp_stream *stream, bool pframes)
 
 	if (buffer_duration_usec > drop_threshold) {
 		debug("buffer_duration_usec: %" PRId64, buffer_duration_usec);
-		drop_frames(stream, name, priority, p_min_dts_usec);
+		drop_frames(stream, name, priority, pframes);
 	}
 }
 
@@ -1223,6 +1232,7 @@ static bool add_video_packet(struct rtmp_stream *stream,
 		stream->min_priority = 0;
 	}
 
+	stream->last_dts_usec = packet->dts_usec;
 	return add_packet(stream, packet);
 }
 
