@@ -498,8 +498,16 @@ static bool MFH264_Update(void *data, obs_data_t *settings)
 
 	UpdateParams(enc, settings);
 
-	enc->h264Encoder->SetBitrate(enc->bitrate);
-	enc->h264Encoder->SetQP(enc->qp);
+	switch (enc->rateControl) {
+	case H264RateControlCBR:
+		return ApplyCBR(enc);
+	case H264RateControlConstrainedVBR:
+		return ApplyCVBR(enc);
+	case H264RateControlVBR:
+		return ApplyVBR(enc);
+	case H264RateControlCQP:
+		return ApplyCQP(enc);
+	}
 
 	return true;
 }
