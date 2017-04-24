@@ -538,7 +538,7 @@ mfxStatus QSV_Encoder_Internal::Drain()
 {
 	mfxStatus sts = MFX_ERR_NONE;
 
-	while (m_pTaskPool[m_nFirstSyncTask].syncp) {
+	while (m_pTaskPool && m_pTaskPool[m_nFirstSyncTask].syncp) {
 		sts = m_session.SyncOperation(m_pTaskPool[m_nFirstSyncTask].syncp, 60000);
 		MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
