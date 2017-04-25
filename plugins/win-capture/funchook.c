@@ -280,3 +280,56 @@ void unhook(struct func_hook *hook)
 
 	hook->hooked = false;
 }
+
+static bool check_forward_chain(struct func_hook *hook, intptr_t offset)
+{
+	uint8_t *p = (uint8_t*)hook->func_addr - JMP_32_SIZE;
+	return *((int32_t*)&p[6]) == (int32_t)offset;
+}
+
+static bool check_forward_overwrite(struct func_hook *hook, intptr_t offset)
+{
+	uint8_t *ptr = (uint8_t*)hook->func_addr;
+	return *((int32_t*)&ptr[1]) == (int32_t)offset;
+}
+
+static bool check_reverse_chain(struct func_hook *hook)
+{
+	uint8_t *p = (uint8_t*)hook->func_addr - JMP_32_SIZE;
+	return *((uint32_t*)&p[1]) == (uint32_t)(hook->hook_addr - hook->func_addr);
+}
+
+bool check_hook(struct func_hook *hook)
+{
+	if (!hook->started)
+		return false;
+
+	if (!hook->hooked)
+		return false;
+
+	intptr_t offset = hook->hook_addr - hook->func_addr - JMP_32_SIZE;
+
+#ifdef _WIN64
+	if (hook->is_64bit_jump) {
+		uint8_t data[JMP_64_SIZE];
+		uintptr_t *ptr_loc = (uintptr_t*)((uint8_t*)data + sizeof(longjmp64));
+
+		memcpy(data, (void*)hook->func_addr, JMP_64_SIZE);
+		memcpy(data, longjmp64, sizeof(longjmp64));
+		*ptr_loc = hook->hook_addr;
+
+		return memcmp((void*)hook->func_addr, data, JMP_64_SIZE) == 0;
+	}
+#endif
+
+	switch (hook->type) {
+	case HOOKTYPE_FORWARD_CHAIN:
+		return check_forward_chain(hook, offset);
+	case HOOKTYPE_FORWARD_OVERWRITE:
+		return check_forward_overwrite(hook, offset);
+	case HOOKTYPE_REVERSE_CHAIN:
+		return check_reverse_chain(hook);
+	}
+
+	return false;
+}

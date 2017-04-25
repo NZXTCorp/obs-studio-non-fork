@@ -38,6 +38,7 @@ extern void hook_init(struct func_hook *hook,
 extern void hook_start(struct func_hook *hook);
 extern void do_hook(struct func_hook *hook, bool force);
 extern void unhook(struct func_hook *hook);
+extern bool check_hook(struct func_hook *hook);
 
 static inline void rehook(struct func_hook *hook)
 {
