@@ -1779,8 +1779,10 @@ static void game_capture_tick(void *data, float seconds)
 		DWORD code = 0;
 
 		EnterCriticalSection(&gc->ipc_mutex);
-		if ((code_valid = gc->have_ipc_result))
+		if ((code_valid = gc->have_ipc_result)) {
+			gc->have_ipc_result = false;
 			code = gc->ipc_result;
+		}
 		LeaveCriticalSection(&gc->ipc_mutex);
 
 		if (code_valid) {
