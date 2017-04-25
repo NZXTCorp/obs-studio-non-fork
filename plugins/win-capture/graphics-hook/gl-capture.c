@@ -24,10 +24,10 @@ static const GUID GUID_IDXGIFactory1 =
 static const GUID GUID_IDXGIResource =
 {0x035f3ab4, 0x482e, 0x4e50, {0xb4, 0x1f, 0x8a, 0x7f, 0x8b, 0xd8, 0x96, 0x0b}};
 
-static struct func_hook swap_buffers;
-static struct func_hook wgl_swap_layer_buffers;
-static struct func_hook wgl_swap_buffers;
-static struct func_hook wgl_delete_context;
+static struct func_hook swap_buffers           = { 0 };
+static struct func_hook wgl_swap_layer_buffers = { 0 };
+static struct func_hook wgl_swap_buffers       = { 0 };
+static struct func_hook wgl_delete_context     = { 0 };
 
 struct gl_data {
 	int                            swap_recurse;
@@ -790,9 +790,9 @@ static void gl_capture(HDC hdc)
 	}
 }
 
+static bool gl_swap_begin_called = false;
 static inline void gl_swap_begin(HDC hdc)
 {
-	static bool gl_swap_begin_called = false;
 	if (!gl_swap_begin_called) {
 		hlog("gl_swap_begin called");
 		gl_swap_begin_called = true;
@@ -960,4 +960,14 @@ bool hook_gl(void)
 	rehook(&swap_buffers);
 
 	return true;
+}
+
+bool check_gl(void)
+{
+	if (gl_swap_begin_called)
+		return true;
+
+	return check_hook(&wgl_delete_context) ||
+		check_hook(&wgl_swap_layer_buffers) ||
+		check_hook(&wgl_swap_buffers);
 }

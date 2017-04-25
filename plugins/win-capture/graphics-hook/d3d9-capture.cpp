@@ -20,11 +20,11 @@ typedef HRESULT (STDMETHODCALLTYPE *reset_ex_t)(IDirect3DDevice9*,
 
 typedef HRESULT (WINAPI *createfactory1_t)(REFIID, void **);
 
-static struct func_hook present;
-static struct func_hook present_ex;
-static struct func_hook present_swap;
-static struct func_hook reset;
-static struct func_hook reset_ex;
+static struct func_hook present      = { 0 };
+static struct func_hook present_ex   = { 0 };
+static struct func_hook present_swap = { 0 };
+static struct func_hook reset        = { 0 };
+static struct func_hook reset_ex     = { 0 };
 
 struct d3d9_data {
 	HMODULE                d3d9;
@@ -726,6 +726,7 @@ static void d3d9_capture(IDirect3DDevice9 *device,
 /* this is used just in case Present calls PresentEx or vise versa. */
 static int present_recurse = 0;
 
+static bool present_begin_called = false;
 static inline void present_begin(IDirect3DDevice9 *device,
 		IDirect3DSurface9 *&backbuffer,
 		IDirect3DSwapChain9 *swap, HWND override_window,
@@ -733,7 +734,6 @@ static inline void present_begin(IDirect3DDevice9 *device,
 {
 	HRESULT hr;
 
-	static bool present_begin_called = false;
 	if (!present_begin_called) {
 		hlog("present_begin called");
 		present_begin_called = true;
@@ -1049,4 +1049,14 @@ bool hook_d3d9(void)
 
 	hlog("Hooked D3D9");
 	return true;
+}
+
+bool check_d3d9()
+{
+	if (present_begin_called)
+		return true;
+
+	return check_hook(&present_swap) ||
+		check_hook(&present_ex) ||
+		check_hook(&present);
 }

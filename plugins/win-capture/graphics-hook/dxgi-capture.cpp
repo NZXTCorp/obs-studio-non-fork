@@ -16,8 +16,8 @@ typedef HRESULT (STDMETHODCALLTYPE *resize_buffers_t)(IDXGISwapChain*, UINT,
 		UINT, UINT, DXGI_FORMAT, UINT);
 typedef HRESULT (STDMETHODCALLTYPE *present_t)(IDXGISwapChain*, UINT, UINT);
 
-static struct func_hook resize_buffers;
-static struct func_hook present;
+static struct func_hook resize_buffers = { 0 };
+static struct func_hook present        = { 0 };
 
 static struct {
 	const uint64_t present_grace_time = 500000000; // 500 ms
@@ -197,6 +197,7 @@ static inline IUnknown *get_dxgi_backbuffer(IDXGISwapChain *swap)
 	return res;
 }
 
+static bool hook_present_called = false;
 static HRESULT STDMETHODCALLTYPE hook_present(IDXGISwapChain *swap,
 		UINT sync_interval, UINT flags)
 {
@@ -206,7 +207,6 @@ static HRESULT STDMETHODCALLTYPE hook_present(IDXGISwapChain *swap,
 	bool capture;
 	HRESULT hr;
 
-	static bool hook_present_called = false;
 	if (!hook_present_called) {
 		hlog("hook_present called");
 		hook_present_called = true;
@@ -401,4 +401,12 @@ uint8_t *get_d3d1x_pixel_shader(size_t *size)
 {
 	*size = pixel_shader_size;
 	return pixel_shader_data;
+}
+
+bool check_dxgi()
+{
+	if (hook_present_called)
+		return true;
+
+	return check_hook(&present) && check_hook(&resize_buffers);
 }
