@@ -43,6 +43,10 @@ extern bool hook_d3d9(void);
 extern bool hook_dxgi(void);
 extern bool hook_gl(void);
 
+extern bool check_d3d9(void);
+extern bool check_dxgi(void);
+extern bool check_gl(void);
+
 extern void d3d10_capture(void *swap, void *backbuffer);
 extern void d3d10_free(void);
 extern void d3d11_capture(void *swap, void *backbuffer);

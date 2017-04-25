@@ -44,6 +44,9 @@ char                           process_name[MAX_PATH]          = {0};
 char                           keepalive_name[64]              = {0};
 HWND                           dummy_window                    = NULL;
 
+static wchar_t                 system_path_w[MAX_PATH]         = {0};
+static UINT                    system_path_w_len               = 0;
+
 static unsigned int            shmem_id_counter                = 0;
 static void                    *shmem_info                     = NULL;
 static HANDLE                  shmem_file_handle               = 0;
@@ -224,6 +227,17 @@ static inline bool init_system_path(void)
 	if (!ret) {
 		init_log("Failed to get windows system path: %lu", GetLastError());
 		return false;
+	}
+
+	system_path_w_len = GetSystemDirectoryW(system_path_w,
+			sizeof(system_path_w) / sizeof(system_path_w[0]));
+	if (!system_path_w_len ||
+		system_path_w_len > sizeof(system_path_w) / sizeof(system_path_w[0])) {
+
+		init_log("Failed to get unicode system path (%lu <-> %lu): %lu",
+			system_path_w_len, sizeof(system_path_w) / sizeof(system_path_w[0]),
+			GetLastError());
+		system_path_w_len = 0;
 	}
 
 	return true;
@@ -456,24 +470,69 @@ static inline bool dxgi_hookable(void)
 		!!global_hook_info->offsets.dxgi.resize;
 }
 
+static HMODULE modules[1024];
+static wchar_t module_path[1024];
+static void list_process_modules(void)
+{
+	DWORD actual_size;
+
+	SetLastError(0);
+	if (!EnumProcessModulesEx(GetCurrentProcess(), modules, sizeof(modules), &actual_size, LIST_MODULES_ALL)) {
+		hlog("list_process_modules: EnumProcessModulesEx failed (%#x)", GetLastError());
+		return;
+	}
+
+	if (actual_size > sizeof(modules)) {
+		hlog("list_process_modules: EnumProcessModulesEx required more space than provided (%u > %u)", actual_size, sizeof(modules));
+		return;
+	}
+
+	for (size_t i = 0, count = actual_size / sizeof(modules[0]); i < count; i++) {
+		UINT length = GetModuleFileNameEx(GetCurrentProcess(), modules[i], module_path, sizeof(module_path) / sizeof(module_path[0]));
+		if (!length || length > sizeof(module_path) / sizeof(module_path[0])) {
+			hlog("list_process_modules: GetModuleFileNameEx failed (%lu <-> %lu): %#x",
+				length, length > sizeof(module_path) / sizeof(module_path[0]),
+				GetLastError());
+			continue;
+		}
+
+		if (system_path_w_len && system_path_w_len <= length &&
+			CompareStringOrdinal(system_path_w, system_path_w_len,
+				module_path, system_path_w_len, true) == CSTR_EQUAL)
+			continue;
+
+		hlog("list_process_modules: %ls", module_path);
+	}
+}
+
 static inline bool attempt_hook(void)
 {
 	//static bool ddraw_hooked = false;
 	static bool d3d8_hooked  = false;
 	static bool d3d9_hooked  = false;
+	static bool d3d9_broken  = false;
 	static bool dxgi_hooked  = false;
+	static bool dxgi_broken  = false;
 	static bool gl_hooked    = false;
+	static bool gl_broken    = false;
+	static bool modules_logged = false;
 
 	if (!d3d9_hooked && d3d9_hookable()) {
 		d3d9_hooked = hook_d3d9();
+	} else if (d3d9_hooked && !d3d9_broken) {
+		d3d9_broken = !check_d3d9();
 	}
 
 	if (!dxgi_hooked && dxgi_hookable()) {
 		dxgi_hooked = hook_dxgi();
+	} else if (dxgi_hooked && !dxgi_broken) {
+		dxgi_broken = !check_dxgi();
 	}
 
 	if (!gl_hooked) {
 		gl_hooked = hook_gl();
+	} else if (gl_hooked && !gl_broken) {
+		gl_broken = !check_gl();
 	/*} else {
 		rehook_gl();*/
 	}
@@ -485,6 +544,14 @@ static inline bool attempt_hook(void)
 	/*if (!ddraw_hooked && ddraw_hookable()) {
 		ddraw_hooked = hook_ddraw();
 	}*/
+
+	if (!modules_logged &&
+		(d3d9_broken || dxgi_broken || gl_broken)) {
+		hlog("attempt_hook: some hooks appear to be broken (d3d9: %d, dxgi: %d, gl: %d",
+			d3d9_broken, dxgi_broken, gl_broken);
+		list_process_modules();
+		modules_logged = true;
+	}
 
 	return d3d8_hooked || d3d9_hooked ||
 		dxgi_hooked || gl_hooked;
