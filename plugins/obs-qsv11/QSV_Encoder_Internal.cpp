@@ -561,17 +561,17 @@ mfxStatus QSV_Encoder_Internal::ClearData()
 
 	for (int i = 0; i < m_nSurfNum; i++) {
 		if (!m_bUseD3D11)
-			delete m_pmfxSurfaces[i]->Data.Y;
+			delete[] m_pmfxSurfaces[i]->Data.Y;
 
 		delete m_pmfxSurfaces[i];
 	}
 	MSDK_SAFE_DELETE_ARRAY(m_pmfxSurfaces);
 
 	for (int i = 0; i < m_nTaskPool; i++)
-		delete m_pTaskPool[i].mfxBS.Data;
+		delete[] m_pTaskPool[i].mfxBS.Data;
 	MSDK_SAFE_DELETE_ARRAY(m_pTaskPool);
 
-	delete m_outBitstream.Data;
+	delete[] m_outBitstream.Data;
 
 	if (m_pmfxENC != NULL) {
 		delete m_pmfxENC;
