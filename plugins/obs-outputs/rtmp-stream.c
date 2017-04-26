@@ -385,6 +385,7 @@ void update_packet_strain(struct rtmp_stream *stream)
 	if (!stream->autotune)
 		return;
 
+	pthread_mutex_lock(&stream->packet_strain_mutex);
 	float strain = stream->write_buf_len / (double)stream->write_buf_size;
 
 	struct packet_strain_data data = {
@@ -392,7 +393,6 @@ void update_packet_strain(struct rtmp_stream *stream)
 	};
 	data.strain = strain;
 
-	pthread_mutex_lock(&stream->packet_strain_mutex);
 	circlebuf_push_back(&stream->packet_strain, &data, sizeof(data));
 	prune_packets_sent(&stream->packet_strain);
 	pthread_mutex_unlock(&stream->packet_strain_mutex);
@@ -734,6 +734,8 @@ static int init_send(struct rtmp_stream *stream)
 
 		stream->write_buf_size = ideal_buffer_size;
 		stream->write_buf = bmalloc(ideal_buffer_size);
+
+		stream->target_write_buf_size = ideal_buffer_size;
 
 #ifdef _WIN32
 		ret = pthread_create(&stream->socket_thread, NULL,
@@ -1187,6 +1189,16 @@ static bool add_video_packet(struct rtmp_stream *stream,
 
 			stream->last_adjustment_time = os_gettime_ns() + buffer_length;
 			stream->adjustment_frame_id_valid = false;
+
+
+			// to bytes/sec
+			uint32_t ideal_buffer_size = (stream->current_bitrate + stream->audio_bitrate) * 128;
+			if (ideal_buffer_size < 131072)
+				ideal_buffer_size = 131072;
+
+			pthread_mutex_lock(&stream->packet_strain_mutex);
+			stream->target_write_buf_size = ideal_buffer_size;
+			pthread_mutex_unlock(&stream->packet_strain_mutex);
 		}
 
 	} else if (stream->autotune) {

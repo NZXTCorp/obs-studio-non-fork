@@ -121,6 +121,7 @@ struct rtmp_stream {
 	pthread_mutex_t  packet_strain_mutex;
 	struct circlebuf packet_strain;
 	struct circlebuf sizes_sent;
+	size_t           target_write_buf_size;
 };
 
 #ifdef _WIN32
