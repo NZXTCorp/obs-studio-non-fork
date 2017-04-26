@@ -527,6 +527,7 @@ static const char *capture_signals[] = {
 	                    "bool anti_cheat, int process_thread_id)",
 	"void monitor_process(ptr source, int process_id)",
 	"void screenshot_saved(ptr source, string filename, int screenshot_id)",
+	"void process_inaccessible(ptr source, int process_id)",
 	NULL
 };
 
@@ -669,6 +670,17 @@ static inline bool is_64bit_process(HANDLE process)
 	return !x86;
 }
 
+static void signal_process_inaccessible(struct game_capture *gc)
+{
+	uint8_t stack[128];
+
+	calldata_t data;
+	calldata_init_fixed(&data, stack, sizeof(stack)/sizeof(uint8_t));
+	calldata_set_ptr(&data, "source", &gc->source);
+	calldata_set_int(&data, "process_id", gc->process_id);
+	signal_handler_signal(gc->signals, "process_inaccessible", &data);
+}
+
 static inline bool open_target_process(struct game_capture *gc)
 {
 	if (gc->target_process)
@@ -680,6 +692,9 @@ static inline bool open_target_process(struct game_capture *gc)
 	if (!gc->target_process) {
 		warn("process '%ld' inaccessible, giving up", (long)gc->process_id);
 		gc->error_acquiring = true;
+
+		signal_process_inaccessible(gc);
+
 		return false;
 	}
 
