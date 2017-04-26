@@ -469,6 +469,8 @@ mfxStatus QSV_Encoder_Internal::Encode(uint64_t ts, uint8_t *pDataY,
 				60000);
 		MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
+		m_bufferedFrames.clear();
+
 		mfxU8 *pTemp = m_outBitstream.Data;
 		memcpy(&m_outBitstream, &m_pTaskPool[m_nFirstSyncTask].mfxBS,
 				sizeof(mfxBitstream));
@@ -494,6 +496,16 @@ mfxStatus QSV_Encoder_Internal::Encode(uint64_t ts, uint8_t *pDataY,
 		info("MSDK Encode:\n"
 			"\tnSurfIdx: %d",
 			nSurfIdx);
+#endif
+	}
+	
+	if (!*pBS && !m_bufferedFrames.empty()) {
+		m_currentFrame = move(m_bufferedFrames.front());
+		m_bufferedFrames.pop_front();
+
+		*pBS = &m_currentFrame.second;
+#if 0
+		info("returning buffered frame %d", m_currentFrame.second.TimeStamp);
 #endif
 	}
 
@@ -538,11 +550,20 @@ mfxStatus QSV_Encoder_Internal::Drain()
 {
 	mfxStatus sts = MFX_ERR_NONE;
 
+	m_bufferedFrames.clear();
+
 	while (m_pTaskPool && m_pTaskPool[m_nFirstSyncTask].syncp) {
-		sts = m_session.SyncOperation(m_pTaskPool[m_nFirstSyncTask].syncp, 60000);
+		auto &task = m_pTaskPool[m_nFirstSyncTask];
+		sts = m_session.SyncOperation(task.syncp, 60000);
 		MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
+		m_bufferedFrames.emplace_back(task.mfxBS.Data, task.mfxBS);
+#if 0
+		info("buffering frame %d", m_bufferedFrames.back().second.TimeStamp);
+#endif
+
 		m_pTaskPool[m_nFirstSyncTask].syncp = NULL;
+		m_pTaskPool[m_nFirstSyncTask].mfxBS.Data = nullptr;
 		m_nFirstSyncTask = (m_nFirstSyncTask + 1) % m_nTaskPool;
 	}
 

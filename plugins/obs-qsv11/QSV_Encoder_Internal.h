@@ -59,6 +59,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "QSV_Encoder.h"
 #include "common_utils.h"
 
+#include <deque>
+#include <memory>
+
 class QSV_Encoder_Internal
 {
 public:
@@ -108,5 +111,7 @@ private:
 	mfxBitstream                   m_outBitstream = { 0 };
 	bool                           m_bIsWindows8OrGreater = false;
 	bool                           m_bUseD3D11 = false;
+	std::pair<std::unique_ptr<mfxU8[]>, mfxBitstream> m_currentFrame;
+	std::deque<std::pair<std::unique_ptr<mfxU8[]>, mfxBitstream>> m_bufferedFrames;
 };
 
