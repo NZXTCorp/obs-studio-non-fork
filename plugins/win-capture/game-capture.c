@@ -679,6 +679,7 @@ static inline bool open_target_process(struct game_capture *gc)
 			false, gc->process_id);
 	if (!gc->target_process) {
 		warn("process '%ld' inaccessible, giving up", (long)gc->process_id);
+		gc->error_acquiring = true;
 		return false;
 	}
 
