@@ -708,6 +708,7 @@ static int init_send(struct rtmp_stream *stream)
 			obs_data_t *params = obs_encoder_get_settings(vencoder);
 			if (params) {
 				int bitrate = obs_data_get_int(params, "bitrate");
+				stream->current_bitrate = bitrate;
 				total_bitrate += bitrate;
 				obs_data_release(params);
 			}
@@ -736,6 +737,29 @@ static int init_send(struct rtmp_stream *stream)
 		stream->write_buf = bmalloc(ideal_buffer_size);
 
 		stream->target_write_buf_size = ideal_buffer_size;
+
+		{
+			obs_data_t *settings = obs_output_get_settings(stream->output);
+			stream->autotune = obs_data_get_bool(settings,
+				OPT_AUTOTUNE_ENABLED);
+			if (stream->autotune) {
+				obs_encoder_t *vencoder = obs_output_get_video_encoder(stream->output);
+				if (vencoder && obs_encoder_can_update(vencoder)) {
+					obs_data_item_t *target = obs_data_item_byname(settings, OPT_TARGET_BITRATE);
+					if (target) {
+						stream->target_bitrate = obs_data_item_get_int(target);
+						if (!stream->current_bitrate)
+							stream->current_bitrate = stream->target_bitrate;
+					} else if (stream->current_bitrate)
+						stream->target_bitrate = stream->current_bitrate;
+					else
+						stream->autotune = false;
+				} else {
+					stream->autotune = false;
+				}
+			}
+			obs_data_release(settings);
+		}
 
 #ifdef _WIN32
 		ret = pthread_create(&stream->socket_thread, NULL,
@@ -961,21 +985,6 @@ static bool init_connect(struct rtmp_stream *stream)
 			OPT_NEWSOCKETLOOP_ENABLED);
 	stream->low_latency_mode = obs_data_get_bool(settings,
 			OPT_LOWLATENCY_ENABLED);
-
-	if (stream->new_socket_loop) {
-		stream->autotune = obs_data_get_bool(settings,
-				OPT_AUTOTUNE_ENABLED);
-		if (stream->autotune) {
-			obs_encoder_t *vencoder = obs_output_get_video_encoder(stream->output);
-			if (vencoder && obs_encoder_can_update(vencoder)) {
-				stream->target_bitrate = obs_data_get_int(settings,
-						OPT_TARGET_BITRATE);
-				stream->current_bitrate = stream->target_bitrate;
-			} else {
-				stream->autotune = false;
-			}
-		}
-	}
 
 	obs_data_release(settings);
 	return true;
