@@ -1175,7 +1175,7 @@ static void handle_packet_strain(struct rtmp_stream *stream, bool dropped_frames
 
 	} else if (stream->last_adjustment_time + 5000000000 < current_time && stream->current_bitrate < stream->target_bitrate &&
 		strain < .05 && stream->last_strain < .05 && !dropped_frames &&
-		fabsf(diff) <= 0.075) {
+		diff >= 0) {
 		stream->current_bitrate += stream->target_bitrate * (0.05 - ((strain + stream->last_strain) / 2));
 		if (stream->current_bitrate > stream->target_bitrate)
 			stream->current_bitrate = stream->target_bitrate;
