@@ -942,6 +942,11 @@ EXPORT void obs_source_output_video(obs_source_t *source,
 EXPORT void obs_source_output_audio(obs_source_t *source,
 		const struct obs_source_audio *audio);
 
+EXPORT obs_source_audio_stream_t *obs_source_add_audio_stream(obs_source_t *source);
+EXPORT void obs_source_remove_audio_stream(obs_source_t *source, obs_source_audio_stream_t *stream);
+EXPORT void obs_source_output_audio_stream(obs_source_t *source,
+		obs_source_audio_stream_t *stream, const struct obs_source_audio *audio);
+
 /** Signal an update to any currently used properties via 'update_properties' */
 EXPORT void obs_source_update_properties(obs_source_t *source);
 

@@ -2026,6 +2026,60 @@ void obs_source_output_video(obs_source_t *source,
 	}
 }
 
+obs_source_audio_stream_t *obs_source_add_audio_stream(obs_source_t *source)
+{
+	if (!obs_source_valid(source, "obs_source_add_audio_stream"))
+		return NULL;
+	
+	if (!(source->info.output_flags & OBS_SOURCE_AUDIO)) {
+		blog(LOG_WARNING, "obs_source_add_audio_stream: Tried to add "
+			"audio stream to non-audio source '%s' (%p)",
+			obs_source_get_name(source), source);
+		return NULL;
+	}
+
+	obs_source_audio_stream_t *stream = bzalloc(sizeof(*stream));
+	stream->audio_line = audio_output_create_line(obs->audio.audio,
+			source->context.name, 0xF);
+	if (!stream->audio_line) {
+		blog(LOG_ERROR, "obs_source_add_audio_stream: Failed to create audio_line "
+			"for source %s (%p)", obs_source_get_name(source), source);
+		bfree(stream);
+		return NULL;
+	}
+
+	pthread_mutex_lock(&source->audio_mutex);
+	da_push_back(source->audio_streams, &stream);
+	audio_line_set_mixers(stream->audio_line,
+		audio_line_get_mixers(source->audio_streams.array[0]->audio_line));
+	pthread_mutex_unlock(&source->audio_mutex);
+
+	return stream;
+}
+
+void obs_source_remove_audio_stream(obs_source_t *source, obs_source_audio_stream_t *stream)
+{
+	if (!obs_source_valid(source, "obs_source_remove_audio_stream"))
+		return;
+	if (!obs_ptr_valid(stream, "obs_source_remove_audio_stream"))
+		return;
+
+	pthread_mutex_lock(&source->audio_mutex);
+
+	size_t idx = da_find(source->audio_streams, &stream, 0);
+	if (idx == DARRAY_INVALID) {
+		blog(LOG_WARNING, "obs_source_remove_audio_stream: Tried to remove unknown "
+			"audio stream from source %s (%p)", obs_source_get_name(source), source);
+		goto unlock;
+	}
+
+	da_erase(source->audio_streams, idx);
+	free_source_audio_stream(stream);
+
+unlock:
+	pthread_mutex_unlock(&source->audio_mutex);
+}
+
 static inline struct obs_audio_data *filter_async_audio(obs_source_t *source,
 		struct obs_audio_data *in)
 {
@@ -2168,18 +2222,16 @@ static void process_audio(obs_source_t *source,
 		downmix_to_mono_planar(stream, frames);
 }
 
-void obs_source_output_audio(obs_source_t *source,
+void obs_source_output_audio_stream(obs_source_t *source,
+		obs_source_audio_stream_t *stream,
 		const struct obs_source_audio *audio)
 {
-	obs_source_audio_stream_t *stream;
 	struct obs_audio_data *output;
 
-	if (!obs_source_valid(source, "obs_source_output_audio"))
+	if (!obs_source_valid(source, "obs_source_output_audio_stream"))
 		return;
-	if (!obs_ptr_valid(audio, "obs_source_output_audio"))
+	if (!obs_ptr_valid(audio, "obs_source_output_audio_stream"))
 		return;
-
-	stream = source->audio_streams.array[0];
 
 	process_audio(source, stream, audio);
 
@@ -2201,6 +2253,18 @@ void obs_source_output_audio(obs_source_t *source,
 	}
 
 	pthread_mutex_unlock(&source->filter_mutex);
+}
+
+void obs_source_output_audio(obs_source_t *source,
+		const struct obs_source_audio *audio)
+{
+	if (!obs_source_valid(source, "obs_source_output_audio"))
+		return;
+	if (!obs_ptr_valid(audio, "obs_source_output_audio"))
+		return;
+
+	obs_source_output_audio_stream(source,
+		source->audio_streams.array[0], audio);
 }
 
 static inline bool frame_out_of_bounds(const obs_source_t *source, uint64_t ts)
