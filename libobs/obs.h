@@ -68,6 +68,8 @@ typedef struct obs_weak_output  obs_weak_output_t;
 typedef struct obs_weak_encoder obs_weak_encoder_t;
 typedef struct obs_weak_service obs_weak_service_t;
 
+typedef struct obs_source_audio_stream obs_source_audio_stream_t;
+
 #include "obs-source.h"
 #include "obs-encoder.h"
 #include "obs-output.h"

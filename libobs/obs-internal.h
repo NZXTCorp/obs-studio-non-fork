@@ -476,6 +476,15 @@ struct obs_weak_source {
 	struct obs_source *source;
 };
 
+struct obs_source_audio_stream {
+	uint64_t                        next_audio_ts_min;
+	struct resample_info            sample_info;
+	audio_resampler_t               *resampler;
+	audio_line_t                    *audio_line;
+	struct obs_audio_data           audio_data;
+	size_t                          audio_storage_size;
+};
+
 struct obs_source {
 	struct obs_context_data         context;
 	struct obs_source_info          info;
@@ -511,7 +520,6 @@ struct obs_source {
 	/* timing (if video is present, is based upon video) */
 	volatile bool                   timing_set;
 	volatile uint64_t               timing_adjust;
-	uint64_t                        next_audio_ts_min;
 	uint64_t                        last_frame_ts;
 	uint64_t                        last_sys_timestamp;
 	bool                            async_rendered;
@@ -519,16 +527,12 @@ struct obs_source {
 	/* audio */
 	bool                            audio_failed;
 	bool                            muted;
-	struct resample_info            sample_info;
-	audio_resampler_t               *resampler;
-	audio_line_t                    *audio_line;
 	pthread_mutex_t                 audio_mutex;
-	struct obs_audio_data           audio_data;
-	size_t                          audio_storage_size;
 	float                           base_volume;
 	float                           user_volume;
 	float                           present_volume;
 	int64_t                         sync_offset;
+	DARRAY(obs_source_audio_stream_t*) audio_streams;
 
 	/* async video data */
 	gs_texture_t                    *async_texture;

@@ -142,9 +142,11 @@ bool obs_source_init(struct obs_source *source,
 		return false;
 
 	if (info && info->output_flags & OBS_SOURCE_AUDIO) {
-		source->audio_line = audio_output_create_line(obs->audio.audio,
+		obs_source_audio_stream_t *stream = bzalloc(sizeof(*stream));
+		da_push_back(source->audio_streams, &stream);
+		stream->audio_line = audio_output_create_line(obs->audio.audio,
 				source->context.name, 0xF);
-		if (!source->audio_line) {
+		if (!stream->audio_line) {
 			blog(LOG_ERROR, "Failed to create audio line for "
 			                "source '%s'", source->context.name);
 			return false;
@@ -344,6 +346,16 @@ static inline void obs_source_frame_decref(struct obs_source_frame *frame)
 static bool obs_source_filter_remove_refless(obs_source_t *source,
 		obs_source_t *filter);
 
+static void free_source_audio_stream(obs_source_audio_stream_t *stream)
+{
+	for (size_t i = 0; i < MAX_AV_PLANES; i++)
+		bfree(stream->audio_data.data[i]);
+
+	audio_line_destroy(stream->audio_line);
+	audio_resampler_destroy(stream->resampler);
+	bfree(stream);
+}
+
 void obs_source_destroy(struct obs_source *source)
 {
 	size_t i;
@@ -389,12 +401,10 @@ void obs_source_destroy(struct obs_source *source)
 		gs_texrender_destroy(source->filter_texrender);
 	gs_leave_context();
 
-	for (i = 0; i < MAX_AV_PLANES; i++)
-		bfree(source->audio_data.data[i]);
+	for (i = 0; i < source->audio_streams.num; i++)
+		free_source_audio_stream(source->audio_streams.array[i]);
 
-	audio_line_destroy(source->audio_line);
-	audio_resampler_destroy(source->resampler);
-
+	da_free(source->audio_streams);
 	da_free(source->async_cache);
 	da_free(source->async_frames);
 	da_free(source->filters);
@@ -916,6 +926,7 @@ static inline uint64_t uint64_diff(uint64_t ts1, uint64_t ts2)
 }
 
 static void source_output_audio_line(obs_source_t *source,
+		obs_source_audio_stream_t *stream,
 		const struct audio_data *data)
 {
 	struct audio_data in = *data;
@@ -931,18 +942,18 @@ static void source_output_audio_line(obs_source_t *source,
 	} else if (!source->timing_set) {
 		reset_audio_timing(source, in.timestamp, os_time);
 
-	} else if (source->next_audio_ts_min != 0) {
-		diff = uint64_diff(source->next_audio_ts_min, in.timestamp);
+	} else if (stream->next_audio_ts_min != 0) {
+		diff = uint64_diff(stream->next_audio_ts_min, in.timestamp);
 
 		/* smooth audio if within threshold */
 		if (diff > MAX_TS_VAR)
-			handle_ts_jump(source, source->next_audio_ts_min,
+			handle_ts_jump(source, stream->next_audio_ts_min,
 					in.timestamp, diff, os_time);
 		else if (diff < TS_SMOOTHING_THRESHOLD)
-			in.timestamp = source->next_audio_ts_min;
+			in.timestamp = stream->next_audio_ts_min;
 	}
 
-	source->next_audio_ts_min = in.timestamp +
+	stream->next_audio_ts_min = in.timestamp +
 		conv_frames_to_time(in.frames);
 
 	in.timestamp += source->timing_adjust + source->sync_offset;
@@ -970,7 +981,7 @@ static void source_output_audio_line(obs_source_t *source,
 	if (muted)
 		in.volume = 0.0f;
 
-	audio_line_output(source->audio_line, &in);
+	audio_line_output(stream->audio_line, &in);
 	source_signal_audio_data(source, &in, muted);
 }
 
@@ -2037,6 +2048,7 @@ static inline struct obs_audio_data *filter_async_audio(obs_source_t *source,
 }
 
 static inline void reset_resampler(obs_source_t *source,
+		obs_source_audio_stream_t *stream,
 		const struct obs_source_audio *audio)
 {
 	const struct audio_output_info *obs_info;
@@ -2048,59 +2060,60 @@ static inline void reset_resampler(obs_source_t *source,
 	output_info.samples_per_sec  = obs_info->samples_per_sec;
 	output_info.speakers         = obs_info->speakers;
 
-	source->sample_info.format          = audio->format;
-	source->sample_info.samples_per_sec = audio->samples_per_sec;
-	source->sample_info.speakers        = audio->speakers;
+	stream->sample_info.format          = audio->format;
+	stream->sample_info.samples_per_sec = audio->samples_per_sec;
+	stream->sample_info.speakers        = audio->speakers;
 
-	audio_resampler_destroy(source->resampler);
-	source->resampler = NULL;
+	audio_resampler_destroy(stream->resampler);
+	stream->resampler = NULL;
 
-	if (source->sample_info.samples_per_sec == obs_info->samples_per_sec &&
-	    source->sample_info.format          == obs_info->format          &&
-	    source->sample_info.speakers        == obs_info->speakers) {
+	if (stream->sample_info.samples_per_sec == obs_info->samples_per_sec &&
+	    stream->sample_info.format          == obs_info->format          &&
+	    stream->sample_info.speakers        == obs_info->speakers) {
 		source->audio_failed = false;
 		return;
 	}
 
-	source->resampler = audio_resampler_create(&output_info,
-			&source->sample_info);
+	stream->resampler = audio_resampler_create(&output_info,
+			&stream->sample_info);
 
-	source->audio_failed = source->resampler == NULL;
-	if (source->resampler == NULL)
+	source->audio_failed = stream->resampler == NULL;
+	if (stream->resampler == NULL)
 		blog(LOG_ERROR, "creation of resampler failed");
 }
 
 static void copy_audio_data(obs_source_t *source,
+		obs_source_audio_stream_t *stream,
 		const uint8_t *const data[], uint32_t frames, uint64_t ts)
 {
 	size_t planes    = audio_output_get_planes(obs->audio.audio);
 	size_t blocksize = audio_output_get_block_size(obs->audio.audio);
 	size_t size      = (size_t)frames * blocksize;
-	bool   resize    = source->audio_storage_size < size;
+	bool   resize    = stream->audio_storage_size < size;
 
-	source->audio_data.frames    = frames;
-	source->audio_data.timestamp = ts;
+	stream->audio_data.frames    = frames;
+	stream->audio_data.timestamp = ts;
 
 	for (size_t i = 0; i < planes; i++) {
 		/* ensure audio storage capacity */
 		if (resize) {
-			bfree(source->audio_data.data[i]);
-			source->audio_data.data[i] = bmalloc(size);
+			bfree(stream->audio_data.data[i]);
+			stream->audio_data.data[i] = bmalloc(size);
 		}
 
-		memcpy(source->audio_data.data[i], data[i], size);
+		memcpy(stream->audio_data.data[i], data[i], size);
 	}
 
 	if (resize)
-		source->audio_storage_size = size;
+		stream->audio_storage_size = size;
 }
 
 /* TODO: SSE optimization */
-static void downmix_to_mono_planar(struct obs_source *source, uint32_t frames)
+static void downmix_to_mono_planar(obs_source_audio_stream_t *stream, uint32_t frames)
 {
 	size_t channels = audio_output_get_channels(obs->audio.audio);
 	const float channels_i = 1.0f / (float)channels;
-	float **data = (float**)source->audio_data.data;
+	float **data = (float**)stream->audio_data.data;
 
 	for (size_t channel = 1; channel < channels; channel++) {
 		for (uint32_t frame = 0; frame < frames; frame++)
@@ -2118,45 +2131,47 @@ static void downmix_to_mono_planar(struct obs_source *source, uint32_t frames)
 
 /* resamples/remixes new audio to the designated main audio output format */
 static void process_audio(obs_source_t *source,
+		obs_source_audio_stream_t *stream,
 		const struct obs_source_audio *audio)
 {
 	uint32_t frames = audio->frames;
 	bool mono_output;
 
-	if (source->sample_info.samples_per_sec != audio->samples_per_sec ||
-	    source->sample_info.format          != audio->format          ||
-	    source->sample_info.speakers        != audio->speakers)
-		reset_resampler(source, audio);
+	if (stream->sample_info.samples_per_sec != audio->samples_per_sec ||
+	    stream->sample_info.format          != audio->format          ||
+	    stream->sample_info.speakers        != audio->speakers)
+		reset_resampler(source, stream, audio);
 
 	if (source->audio_failed)
 		return;
 
-	if (source->resampler) {
+	if (stream->resampler) {
 		uint8_t  *output[MAX_AV_PLANES];
 		uint64_t offset;
 
 		memset(output, 0, sizeof(output));
 
-		audio_resampler_resample(source->resampler,
+		audio_resampler_resample(stream->resampler,
 				output, &frames, &offset,
 				audio->data, audio->frames);
 
-		copy_audio_data(source, (const uint8_t *const *)output, frames,
+		copy_audio_data(source, stream, (const uint8_t *const *)output, frames,
 				audio->timestamp - offset);
 	} else {
-		copy_audio_data(source, audio->data, audio->frames,
+		copy_audio_data(source, stream, audio->data, audio->frames,
 				audio->timestamp);
 	}
 
 	mono_output = audio_output_get_channels(obs->audio.audio) == 1;
 
 	if (!mono_output && (source->flags & OBS_SOURCE_FLAG_FORCE_MONO) != 0)
-		downmix_to_mono_planar(source, frames);
+		downmix_to_mono_planar(stream, frames);
 }
 
 void obs_source_output_audio(obs_source_t *source,
 		const struct obs_source_audio *audio)
 {
+	obs_source_audio_stream_t *stream;
 	struct obs_audio_data *output;
 
 	if (!obs_source_valid(source, "obs_source_output_audio"))
@@ -2164,10 +2179,12 @@ void obs_source_output_audio(obs_source_t *source,
 	if (!obs_ptr_valid(audio, "obs_source_output_audio"))
 		return;
 
-	process_audio(source, audio);
+	stream = source->audio_streams.array[0];
+
+	process_audio(source, stream, audio);
 
 	pthread_mutex_lock(&source->filter_mutex);
-	output = filter_async_audio(source, &source->audio_data);
+	output = filter_async_audio(source, &stream->audio_data);
 
 	if (output) {
 		struct audio_data data;
@@ -2179,7 +2196,7 @@ void obs_source_output_audio(obs_source_t *source,
 		data.timestamp = output->timestamp;
 
 		pthread_mutex_lock(&source->audio_mutex);
-		source_output_audio_line(source, &data);
+		source_output_audio_line(source, stream, &data);
 		pthread_mutex_unlock(&source->audio_mutex);
 	}
 
@@ -2824,6 +2841,7 @@ uint32_t obs_source_get_flags(const obs_source_t *source)
 
 void obs_source_set_audio_mixers(obs_source_t *source, uint32_t mixers)
 {
+	obs_source_audio_stream_t *stream;
 	struct calldata data = {0};
 	uint32_t cur_mixers;
 
@@ -2832,7 +2850,9 @@ void obs_source_set_audio_mixers(obs_source_t *source, uint32_t mixers)
 	if ((source->info.output_flags & OBS_SOURCE_AUDIO) == 0)
 		return;
 
-	cur_mixers = audio_line_get_mixers(source->audio_line);
+	stream = source->audio_streams.array[0];
+
+	cur_mixers = audio_line_get_mixers(stream->audio_line);
 	if (cur_mixers == mixers)
 		return;
 
@@ -2844,7 +2864,11 @@ void obs_source_set_audio_mixers(obs_source_t *source, uint32_t mixers)
 	mixers = (uint32_t)calldata_int(&data, "mixers");
 	calldata_free(&data);
 
-	audio_line_set_mixers(source->audio_line, mixers);
+	for (size_t i = 0; i < source->audio_streams.num; i++) {
+		obs_source_audio_stream_t *line =
+			source->audio_streams.array[i];
+		audio_line_set_mixers(line->audio_line, mixers);
+	}
 }
 
 uint32_t obs_source_get_audio_mixers(const obs_source_t *source)
@@ -2854,7 +2878,7 @@ uint32_t obs_source_get_audio_mixers(const obs_source_t *source)
 	if ((source->info.output_flags & OBS_SOURCE_AUDIO) == 0)
 		return 0;
 
-	return audio_line_get_mixers(source->audio_line);
+	return audio_line_get_mixers(source->audio_streams.array[0]->audio_line);
 }
 
 void obs_source_draw_set_color_matrix(const struct matrix4 *color_matrix,
