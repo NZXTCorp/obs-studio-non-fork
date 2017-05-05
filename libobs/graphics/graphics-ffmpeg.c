@@ -5,6 +5,8 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
+#include <libavutil/avutil.h>
+#include <libavutil/imgutils.h>
 
 #include "../obs-ffmpeg-compat.h"
 
@@ -244,6 +246,7 @@ bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 	AVFrame *frame = NULL;
 	AVPacket packet = { 0 };
 	enum AVPixelFormat format;
+	struct SwsContext *swsc = NULL;
 
 	if (!surf || !file)
 		return success;
@@ -290,6 +293,10 @@ bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 	if (!cctx)
 		goto err;
 
+	enum AVPixelFormat source_format = format;
+	if (id == AV_CODEC_ID_MJPEG)
+		format = AV_PIX_FMT_YUVJ420P;
+
 	cctx->pix_fmt = format;
 	cctx->height = gs_stagesurface_get_height(surf);
 	cctx->width = gs_stagesurface_get_width(surf);
@@ -314,6 +321,15 @@ bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 
 	frame->sample_aspect_ratio.den = 1;
 
+	if (id == AV_CODEC_ID_MJPEG) {
+		if (av_image_alloc(&frame->data[0], &frame->linesize[0], frame->width, frame->height, frame->format, 1) < 0)
+			goto err;
+
+		swsc = sws_getContext(frame->width, frame->height, source_format, frame->width, frame->height, frame->format, 0, NULL, NULL, NULL);
+		if (!swsc)
+			goto err;
+	}
+
 	uint8_t *data = NULL;
 	uint32_t linesize = 0;
 	if (!gs_stagesurface_map(surf, &data, &linesize))
@@ -322,8 +338,13 @@ bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 	graphics_t *context = gs_get_context();
 	gs_leave_context();
 
-	frame->linesize[0] = linesize;
-	frame->data[0] = data;
+	if (id == AV_CODEC_ID_MJPEG) {
+		sws_scale(swsc, (const uint8_t * const *)&data, (const uint32_t *)&linesize, 0, frame->height, frame->data, frame->linesize);
+	} else {
+		frame->linesize[0] = linesize;
+		frame->data[0] = data;
+	}
+
 	frame->extended_data = frame->data;
 
 	int got_packet = 0;
@@ -339,6 +360,14 @@ bool gs_stagesurface_save_to_file(gs_stagesurf_t *surf, const char *file)
 		success = true;
 
 err:
+	if (id == AV_CODEC_ID_MJPEG) {
+		if (swsc)
+			sws_freeContext(swsc);
+
+		if (frame && frame->data[0])
+			av_freep(&frame->data[0]);
+	}
+
 	av_free_packet(&packet);
 	av_frame_free(&frame);
 	avcodec_free_context(&cctx);
