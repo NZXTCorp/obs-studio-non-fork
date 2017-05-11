@@ -732,6 +732,15 @@ static inline void do_encode(struct obs_encoder *encoder,
 		encoder->profile_encoder_encode_name =
 			profile_store_name(obs_get_profiler_name_store(),
 					"encode(%s)", encoder->context.name);
+	if (!encoder->profile_encoder_callback_mutex_name)
+		encoder->profile_encoder_callback_mutex_name =
+			profile_store_name(obs_get_profiler_name_store(),
+					"pthread_mutex_lock(&encoder(%s)->callbacks_mutex)",
+					encoder->context.name);
+	if (!encoder->profile_encoder_send_name)
+		encoder->profile_encoder_send_name =
+			profile_store_name(obs_get_profiler_name_store(),
+					"send(%s)", encoder->context.name);
 
 	struct encoder_packet pkt = {0};
 	bool received = false;
@@ -767,15 +776,19 @@ static inline void do_encode(struct obs_encoder *encoder,
 			}
 		}
 
+		profile_start(encoder->profile_encoder_callback_mutex_name);
 		pthread_mutex_lock(&encoder->callbacks_mutex);
 
+		profile_start(encoder->profile_encoder_send_name);
 		for (size_t i = encoder->callbacks.num; i > 0; i--) {
 			struct encoder_callback *cb;
 			cb = encoder->callbacks.array+(i-1);
 			send_packet(encoder, cb, &pkt);
 		}
+		profile_end(encoder->profile_encoder_send_name);
 
 		pthread_mutex_unlock(&encoder->callbacks_mutex);
+		profile_end(encoder->profile_encoder_callback_mutex_name);
 	}
 
 end_profile:

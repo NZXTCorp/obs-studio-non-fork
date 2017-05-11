@@ -798,6 +798,8 @@ struct obs_encoder {
 	DARRAY(struct tracked_frame)    tracked_frames;
 
 	const char                      *profile_encoder_encode_name;
+	const char                      *profile_encoder_callback_mutex_name;
+	const char                      *profile_encoder_send_name;
 };
 
 extern struct obs_encoder_info *find_encoder(const char *id);
