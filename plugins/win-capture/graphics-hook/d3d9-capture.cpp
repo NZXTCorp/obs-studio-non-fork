@@ -985,6 +985,21 @@ static bool manually_get_d3d9_addrs(HMODULE d3d9_module,
 	return true;
 }
 
+static wchar_t module_path[1024] = { 0 };
+static void log_d3d9_module_path(HMODULE loaded_d3d9_module)
+{
+	UINT length = GetModuleFileNameEx(GetCurrentProcess(), loaded_d3d9_module, module_path, sizeof(module_path) / sizeof(module_path[0]));
+	if (!length || length > sizeof(module_path) / sizeof(module_path[0])) {
+		hlog("log_d3d9_module_path: GetModuleFileNameEx failed (%lu <-> %lu): %#x",
+			length, length > sizeof(module_path) / sizeof(module_path[0]),
+			GetLastError());
+		return;
+	}
+
+	hlog("log_d3d9_module_path: %ls", module_path);
+}
+
+static bool d3d9_module_mismatch_logged = false;
 bool hook_d3d9(void)
 {
 	HMODULE d3d9_module = get_system_module("d3d9.dll");
@@ -992,8 +1007,14 @@ bool hook_d3d9(void)
 	void *present_addr = nullptr;
 	void *present_ex_addr = nullptr;
 	void *present_swap_addr = nullptr;
+	HMODULE loaded_d3d9_module = GetModuleHandleA("d3d9.dll");
 
 	if (!d3d9_module) {
+		if (loaded_d3d9_module && !d3d9_module_mismatch_logged) {
+			hlog("Non-system d3d9 module loaded: %p", loaded_d3d9_module);
+			log_d3d9_module_path(loaded_d3d9_module);
+			d3d9_module_mismatch_logged = true;
+		}
 		return false;
 	}
 
