@@ -61,7 +61,7 @@ inline void gs_texture_2d::Rebuild(ID3D11Device *dev)
 		hr = dev->OpenSharedResource((HANDLE)(uintptr_t)sharedHandle,
 				__uuidof(ID3D11Texture2D), (void**)&texture);
 		if (FAILED(hr)) {
-			blog(LOG_WARNING, "Failed to rebuild shared texture: ",
+			blog(LOG_WARNING, "Failed to rebuild shared texture: "
 					"0x%08lX", hr);
 			RebuildSharedTextureFallback();
 		}
