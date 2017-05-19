@@ -475,6 +475,7 @@ static void update_ipc_injector_calldata(struct game_capture *gc,
 	calldata_set_bool(&gc->ipc_inject_calldata, "anti_cheat", anti_cheat);
 	calldata_set_int(&gc->ipc_inject_calldata, "process_thread_id",
 		process_thread_id);
+	calldata_set_string(&gc->ipc_inject_calldata, "hook_dir", obs_module_file(""));
 }
 
 void injector_result(void *context, calldata_t *data)
@@ -524,7 +525,8 @@ static const char *capture_signals[] = {
 	"void stop_capture(ptr source)",
 	"void inject_failed(ptr source, ptr injector_exit_code)",
 	"void inject_request(ptr source, bool process_is_64bit, "
-	                    "bool anti_cheat, int process_thread_id)",
+	                    "bool anti_cheat, int process_thread_id, "
+	                    "string hook_dir)",
 	"void monitor_process(ptr source, int process_id)",
 	"void screenshot_saved(ptr source, string filename, int screenshot_id)",
 	"void process_inaccessible(ptr source, int process_id)",
