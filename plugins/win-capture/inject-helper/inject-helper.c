@@ -97,11 +97,23 @@ static int inject_helper(wchar_t *argv[], const wchar_t *dll)
 		: inject_library_full(id, dll);
 }
 
+static wchar_t *canonicalize(wchar_t *path, size_t capacity)
+{
+	HANDLE file = CreateFile(path, 0, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (file == INVALID_HANDLE_VALUE)
+		return path;
+
+	DWORD ret = GetFinalPathNameByHandle(file, path, capacity - 1, 0);
+	if (ret > 0 && ret < capacity)
+		return path + 4; // remove "\\?\" part
+	return path;
+}
+
 #define UNUSED_PARAMETER(x) ((void)(x))
 
 int main(int argc, char *argv_ansi[])
 {
-	wchar_t dll_path[MAX_PATH] = { 0 };
+	wchar_t dll_path[1024] = { 0 };
 	LPWSTR pCommandLineW;
 	LPWSTR *argv;
 	int ret = INJECT_ERROR_INVALID_PARAMS;
@@ -118,7 +130,8 @@ int main(int argc, char *argv_ansi[])
 			if (name_start) {
 				*(++name_start) = 0;
 				wcscpy(name_start, argv[1]);
-				ret = inject_helper(argv, dll_path);
+				wchar_t *target = canonicalize(dll_path, sizeof(dll_path) / sizeof(dll_path[0]));
+				ret = inject_helper(argv, target);
 			} else {
 				fprintf(stderr, "wcsrchr failed: %p ('%S')\n", name_start, dll_path);
 			}
