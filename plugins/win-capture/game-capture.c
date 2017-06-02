@@ -1814,6 +1814,7 @@ static void game_capture_tick(void *data, float seconds)
 
 	if (!gc->active) {
 		if (!gc->error_acquiring &&
+			(!gc->config.allow_ipc_injector || !gc->ipc_injector_active) &&
 		    gc->retry_time > gc->retry_interval) {
 			if (gc->config.capture_any_fullscreen ||
 			    gc->activate_hook) {
