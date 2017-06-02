@@ -959,6 +959,7 @@ bool hook_gl(void)
 
 	rehook(&swap_buffers);
 
+	hlog("Hooked OpenGL");
 	return true;
 }
 
