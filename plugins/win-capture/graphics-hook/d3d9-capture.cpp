@@ -1031,6 +1031,19 @@ bool hook_d3d9(void)
 		present_swap_addr = get_offset_addr(d3d9_module,
 				global_hook_info->offsets.d3d9.present_swap);
 	} else {
+		static bool d3d9_size_mismatch_logged = false;
+		if (!d3d9_size_mismatch_logged) {
+			hlog("D3D9 offsets are outside of module size boundaries (%#x):"
+				"\n\tpresent:      %#x"
+				"\n\tpresent_ex:   %#x"
+				"\n\tpresent_swap: %#x",
+				d3d9_size,
+				global_hook_info->offsets.d3d9.present,
+				global_hook_info->offsets.d3d9.present_ex,
+				global_hook_info->offsets.d3d9.present_swap);
+			d3d9_size_mismatch_logged = true;
+		}
+
 		if (!dummy_window) {
 			return false;
 		}
