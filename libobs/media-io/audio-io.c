@@ -55,6 +55,7 @@ struct audio_line {
 	DARRAY(uint8_t)            volume_buffers[MAX_AV_PLANES];
 	uint64_t                   base_timestamp;
 	uint64_t                   last_timestamp;
+	uint64_t                   required_buffering;
 
 	uint64_t                   next_ts_min;
 
@@ -345,6 +346,11 @@ static inline void clamp_audio_output(struct audio_output *audio, size_t bytes)
 			}
 		}
 	}
+}
+
+static uint64_t round_to_ms(uint64_t ts)
+{
+	return (ts + 999999ULL) / 1000000ULL * 1000000ULL;
 }
 
 #define MAX_MIX_BYTES 5 * 1024 * 1024
@@ -851,7 +857,18 @@ void audio_line_output(audio_line_t *line, const struct audio_data *data)
 
 	if (!line || !data) return;
 
+	uint64_t min_buffering = round_to_ms(2 * data->frames * 1000000000ULL / line->audio->info.samples_per_sec);
+
 	pthread_mutex_lock(&line->mutex);
+
+	if (min_buffering > line->audio->info.buffer_ms * 1000000ULL)
+		min_buffering = line->audio->info.buffer_ms * 1000000ULL;
+
+	if (line->required_buffering < min_buffering) {
+		blog(LOG_INFO, "Updating buffering for audio line '%s' (%p): %u ms (old: %u ms)",
+			line->name, line, min_buffering / 1000000ULL, line->required_buffering / 1000000ULL);
+		line->required_buffering = min_buffering;
+	}
 
 	if (!line->buffers[0].size) {
 		line->base_timestamp = data->timestamp -
