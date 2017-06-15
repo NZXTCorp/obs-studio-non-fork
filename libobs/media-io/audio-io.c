@@ -57,6 +57,8 @@ struct audio_line {
 	uint64_t                   last_timestamp;
 	uint64_t                   required_buffering;
 
+	bool                       last_timestamp_valid;
+
 	uint64_t                   next_ts_min;
 
 	/* specifies which mixes this line applies to via bits */
@@ -362,7 +364,7 @@ static uint64_t round_to_ms(uint64_t ts)
 #define AUDIO_WAIT_TIME (1000/40)
 
 static uint64_t mix_and_output(struct audio_output *audio, uint64_t audio_time,
-		uint64_t prev_time)
+		uint64_t prev_time, uint64_t *buffer_time)
 {
 	struct audio_line *line = audio->first_line;
 	uint64_t frames = ts_diff_frames(audio, audio_time, prev_time);
@@ -417,6 +419,8 @@ static uint64_t mix_and_output(struct audio_output *audio, uint64_t audio_time,
 		}
 	}
 
+	bool buffer_time_updated = false;
+
 	/* mix audio lines */
 	while (line) {
 		struct audio_line *next = line->next;
@@ -446,6 +450,18 @@ static uint64_t mix_and_output(struct audio_output *audio, uint64_t audio_time,
 		if (mix_audio_line(audio, line, bytes, prev_time))
 			line->base_timestamp = audio_time;
 
+		uint64_t line_required_buffering = round_to_ms(
+			((prev_time > line->last_timestamp) ? prev_time - line->last_timestamp : 0) + line->required_buffering);
+		if (line_required_buffering > audio->info.buffer_ms * 1000000ULL)
+			line_required_buffering = audio->info.buffer_ms * 1000000ULL;
+		if (!audio_thread_pause && !audio->catching_up && line->last_timestamp_valid && line_required_buffering > *buffer_time &&
+			(!audio->pause_cutoff_time_valid || audio->pause_cutoff_time < line->last_timestamp)) {
+			*buffer_time = line_required_buffering;
+			buffer_time_updated = true;
+		}
+
+		line->last_timestamp_valid = false;
+
 		pthread_mutex_unlock(&line->mutex);
 
 		line = next;
@@ -458,13 +474,16 @@ static uint64_t mix_and_output(struct audio_output *audio, uint64_t audio_time,
 	for (size_t i = 0; i < MAX_AUDIO_MIXES; i++)
 		do_audio_output(audio, i, prev_time, (uint32_t)frames);
 
+	if (buffer_time_updated)
+		blog(LOG_INFO, "New audio buffering time: %llu ms (max is %llu ms)", *buffer_time / 1000000ULL, audio->info.max_buffer_ms);
+
 	return audio_time;
 }
 
 static void *audio_thread(void *param)
 {
 	struct audio_output *audio = param;
-	uint64_t buffer_time = audio->info.buffer_ms * 1000000;
+	uint64_t buffer_time = 0;
 	uint64_t prev_time = os_gettime_ns() - buffer_time;
 	uint64_t audio_time;
 
@@ -482,8 +501,10 @@ static void *audio_thread(void *param)
 		pthread_mutex_lock(&audio->line_mutex);
 
 		audio_time = os_gettime_ns() - buffer_time;
-		audio_time = mix_and_output(audio, audio_time, prev_time);
-		prev_time  = audio_time;
+		if (audio_time > prev_time) { // in case of buffer_time adjustments the new audio time can be below the previous time
+			audio_time = mix_and_output(audio, audio_time, prev_time, &buffer_time);
+			prev_time = audio_time;
+		}
 
 		pthread_mutex_unlock(&audio->line_mutex);
 		profile_end(audio_thread_name);
@@ -882,12 +903,16 @@ void audio_line_output(audio_line_t *line, const struct audio_data *data)
 	}
 
 	if (!line->buffers[0].size) {
-		line->base_timestamp = data->timestamp -
-		                       line->audio->info.buffer_ms * 1000000;
+		line->base_timestamp = data->timestamp - min_buffering;
 		inserted_audio = audio_line_place_data(line, data);
 
 	} else if (valid_timestamp_range(line, data->timestamp)) {
 		inserted_audio = audio_line_place_data(line, data);
+	}
+
+	if (inserted_audio && !line->last_timestamp_valid) {
+		line->last_timestamp = data->timestamp;
+		line->last_timestamp_valid = true;
 	}
 
 	if (!inserted_audio) {
