@@ -974,16 +974,16 @@ bool obs_reset_audio(const struct obs_audio_info *oai)
 	ai.samples_per_sec = oai->samples_per_sec;
 	ai.format = AUDIO_FORMAT_FLOAT_PLANAR;
 	ai.speakers = oai->speakers;
-	ai.buffer_ms = oai->buffer_ms;
+	ai.max_buffer_ms = oai->max_buffer_ms;
 
 	blog(LOG_INFO, "---------------------------------");
 	blog(LOG_INFO, "audio settings reset:\n"
-	               "\tsamples per sec: %d\n"
-	               "\tspeakers:        %d\n"
-	               "\tbuffering (ms):  %d",
+	               "\tsamples per sec:     %d\n"
+	               "\tspeakers:            %d\n"
+	               "\tmax buffering (ms):  %d",
 	               (int)ai.samples_per_sec,
 	               (int)ai.speakers,
-	               (int)ai.buffer_ms);
+	               (int)ai.max_buffer_ms);
 
 	return obs_init_audio(&ai);
 }
@@ -1028,7 +1028,7 @@ bool obs_get_audio_info(struct obs_audio_info *oai)
 
 	oai->samples_per_sec = info->samples_per_sec;
 	oai->speakers = info->speakers;
-	oai->buffer_ms = info->buffer_ms;
+	oai->max_buffer_ms = info->max_buffer_ms;
 	return true;
 }
 

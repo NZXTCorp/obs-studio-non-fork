@@ -182,7 +182,7 @@ struct obs_video_info {
 struct obs_audio_info {
 	uint32_t            samples_per_sec;
 	enum speaker_layout speakers;
-	uint64_t            buffer_ms;
+	uint64_t            max_buffer_ms;
 };
 
 /**

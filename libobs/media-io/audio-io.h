@@ -77,7 +77,7 @@ struct audio_output_info {
 	uint32_t            samples_per_sec;
 	enum audio_format   format;
 	enum speaker_layout speakers;
-	uint64_t            buffer_ms;
+	uint64_t            max_buffer_ms;
 };
 
 struct audio_convert_info {

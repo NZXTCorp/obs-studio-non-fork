@@ -452,8 +452,8 @@ static uint64_t mix_and_output(struct audio_output *audio, uint64_t audio_time,
 
 		uint64_t line_required_buffering = round_to_ms(
 			((prev_time > line->last_timestamp) ? prev_time - line->last_timestamp : 0) + line->required_buffering);
-		if (line_required_buffering > audio->info.buffer_ms * 1000000ULL)
-			line_required_buffering = audio->info.buffer_ms * 1000000ULL;
+		if (line_required_buffering > audio->info.max_buffer_ms * 1000000ULL)
+			line_required_buffering = audio->info.max_buffer_ms * 1000000ULL;
 		if (!audio_thread_pause && !audio->catching_up && line->last_timestamp_valid && line_required_buffering > *buffer_time &&
 			(!audio->pause_cutoff_time_valid || audio->pause_cutoff_time < line->last_timestamp)) {
 			*buffer_time = line_required_buffering;
@@ -877,7 +877,7 @@ static bool audio_line_place_data(struct audio_line *line,
 /* prevent insertation of data too far away from expected audio timing */
 static inline bool valid_timestamp_range(struct audio_line *line, uint64_t ts)
 {
-	uint64_t buffer_ns = 1000000ULL * line->audio->info.buffer_ms;
+	uint64_t buffer_ns = 1000000ULL * line->audio->info.max_buffer_ms;
 	uint64_t max_ts    = line->base_timestamp + buffer_ns + MAX_DELAY_NS;
 
 	return ts >= line->base_timestamp && ts < max_ts;
@@ -893,8 +893,8 @@ void audio_line_output(audio_line_t *line, const struct audio_data *data)
 
 	pthread_mutex_lock(&line->mutex);
 
-	if (min_buffering > line->audio->info.buffer_ms * 1000000ULL)
-		min_buffering = line->audio->info.buffer_ms * 1000000ULL;
+	if (min_buffering > line->audio->info.max_buffer_ms * 1000000ULL)
+		min_buffering = line->audio->info.max_buffer_ms * 1000000ULL;
 
 	if (line->required_buffering < min_buffering) {
 		blog(LOG_INFO, "Updating buffering for audio line '%s' (%p): %u ms (old: %u ms)",
