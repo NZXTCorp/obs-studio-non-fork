@@ -108,6 +108,9 @@ struct audio_output {
 	bool                       catching_up;
 	uint64_t                   catchup_start_time;
 
+	bool                       pause_cutoff_time_valid;
+	uint64_t                   pause_cutoff_time;
+
 	pthread_mutex_t            line_mutex;
 	struct audio_line          *first_line;
 
@@ -355,6 +358,9 @@ static uint64_t round_to_ms(uint64_t ts)
 
 #define MAX_MIX_BYTES 5 * 1024 * 1024
 
+/* sample audio 40 times a second */
+#define AUDIO_WAIT_TIME (1000/40)
+
 static uint64_t mix_and_output(struct audio_output *audio, uint64_t audio_time,
 		uint64_t prev_time)
 {
@@ -392,6 +398,14 @@ static uint64_t mix_and_output(struct audio_output *audio, uint64_t audio_time,
 	/* return an adjusted audio_time according to the amount
 	 * of data that was sampled to ensure seamless transmission */
 	audio_time = prev_time + conv_frames_to_time(audio, frames);
+
+	// detect pauses in the audio thread so we can discard ambiguous timing changes,
+	// and wait for audio sources to catch up
+	bool audio_thread_pause = ((audio_time - prev_time) / 1000000ULL) > (3 * AUDIO_WAIT_TIME);
+	if (audio_thread_pause) {
+		audio->pause_cutoff_time_valid = true;
+		audio->pause_cutoff_time = audio_time;
+	}
 
 	/* resize and clear mix buffers */
 	for (size_t mix_idx = 0; mix_idx < MAX_AUDIO_MIXES; mix_idx++) {
@@ -446,9 +460,6 @@ static uint64_t mix_and_output(struct audio_output *audio, uint64_t audio_time,
 
 	return audio_time;
 }
-
-/* sample audio 40 times a second */
-#define AUDIO_WAIT_TIME (1000/40)
 
 static void *audio_thread(void *param)
 {
