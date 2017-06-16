@@ -81,7 +81,6 @@ static bool dxgi_check_luid(IDXGISwapChain *swap)
 
 static bool setup_dxgi(IDXGISwapChain *swap)
 {
-	const char *process_name = get_process_name();
 	IUnknown *device;
 	HRESULT hr;
 
@@ -91,9 +90,7 @@ static bool setup_dxgi(IDXGISwapChain *swap)
 		setup_dxgi_called = true;
 	}
 
-	if (_strcmpi(process_name, "YookaLaylee64.exe") == 0) {
-		swapchain_timeout.enabled = true;
-	}
+	swapchain_timeout.enabled = true;
 
 	if (!dxgi_check_luid(swap)) {
 		hlog("setup_dxgi: LUIDs didn't match, using shared memory capture");
