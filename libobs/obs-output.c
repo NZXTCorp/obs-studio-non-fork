@@ -365,6 +365,8 @@ void obs_output_stop_with_timeout(obs_output_t *output, uint64_t timeout_ms)
 	if (encoded && output->active_delay_ns) {
 		obs_output_delay_stop(output);
 	} else if (encoded && was_started && output->info.flags & OBS_OUTPUT_AV) {
+		if (output->reconnecting)
+			return obs_output_force_stop(output);
 		uint64_t sys_time = os_gettime_ns();
 		output->hard_stop_system_time = sys_time + timeout_ms * 1000 * 1000;
 		if (output->hard_stop_system_time <= sys_time)
