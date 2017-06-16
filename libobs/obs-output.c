@@ -1633,13 +1633,15 @@ static void output_reconnect(struct obs_output *output)
 		output->reconnect_retries = 0;
 	}
 
-	if (output->reconnect_retries >= output->reconnect_retry_max) {
+	if (output->reconnect_retries >= output->reconnect_retry_max ||
+		output->hard_stop_system_time != 0) {
 		output->reconnecting = false;
 		if (output->delay_active) {
 			output->delay_active = false;
 			obs_output_end_data_capture(output);
 		}
-		signal_stop(output, OBS_OUTPUT_DISCONNECTED);
+		signal_stop(output,
+			output->hard_stop_system_time ? OBS_OUTPUT_SUCCESS : OBS_OUTPUT_DISCONNECTED);
 		return;
 	}
 
