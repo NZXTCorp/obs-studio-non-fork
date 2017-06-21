@@ -76,7 +76,7 @@ extern struct hook_info *global_hook_info;
 extern HMODULE overlay_dll;
 
 
-typedef bool (*overlay_init_t)(void (*hlog)(const char *fmt, ...));
+typedef bool (*overlay_init_t)(const char *overlay_ipc_name, void (*hlog)(const char *fmt, ...));
 typedef void (*overlay_free_t)(void);
 typedef void (*overlay_reset_t)(void);
 typedef void (*overlay_compile_dxgi_shaders_t)(/*pD3DCompile*/void(*)(void));

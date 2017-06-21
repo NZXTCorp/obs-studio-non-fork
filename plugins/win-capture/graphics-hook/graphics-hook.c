@@ -295,7 +295,7 @@ void init_overlay_info(void)
 	LOAD_SYM(init);
 	LOAD_SYM(free);
 
-	if (overlay_info.init && !overlay_info.init(hlog)) {
+	if (overlay_info.init && !overlay_info.init(global_hook_info->overlay_ipc_name, hlog)) {
 		hlog("Overlay init returned false");
 		free_overlay();
 		return;
