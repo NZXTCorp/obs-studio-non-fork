@@ -174,12 +174,18 @@ struct safe_inject_data
 
 static BOOL __stdcall enum_thread_windows(HWND hWnd, LPARAM lParam)
 {
-	return TRUE;
+	bool *window_found = (bool*)lParam;
+	*window_found = *window_found ||
+		((GetWindowLongPtr(hWnd, GWL_STYLE) & (WS_CHILD | WS_VISIBLE)) == WS_VISIBLE &&
+		!(GetWindowLongPtr(hWnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW));
+	return !*window_found;
 }
 
 static bool try_inject_thread_safe(DWORD thread_id, struct safe_inject_data *inject_data)
 {
-	if (!EnumThreadWindows(thread_id, enum_thread_windows, 0))
+	bool window_found = false;
+	EnumThreadWindows(thread_id, enum_thread_windows, (LPARAM)&window_found);
+	if (!window_found)
 		return false;
 
 	if (inject_data->num_threads >= MAX_THREADS)
