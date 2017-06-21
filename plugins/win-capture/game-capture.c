@@ -823,7 +823,7 @@ copy_config:
 	strncpy(gc->global_hook_info->overlay_dll_path, path, MAX_PATH);
 
 	if (gc->config.overlay_ipc_name)
-		strncopy(gc->global_hook_info->overlay_ipc_name, gc->config.overlay_ipc_name,
+		strncpy(gc->global_hook_info->overlay_ipc_name, gc->config.overlay_ipc_name,
 			sizeof(gc->global_hook_info->overlay_ipc_name) / sizeof(gc->global_hook_info->overlay_ipc_name[0]));
 
 	obs_enter_graphics();

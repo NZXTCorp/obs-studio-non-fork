@@ -23,6 +23,9 @@ set(win-capture_SOURCES
 	duplicator-window-capture.c
 	plugin-main.c)
 
+set(HOOK_SUFFIX "Forge" CACHE STRING "Hook IPC names suffix, to prevent collisions with other applications")
+add_definitions(-DHOOK_SUFFIX="${HOOK_SUFFIX}")
+
 add_library(win-capture MODULE
 	${win-capture_SOURCES}
 	${win-capture_HEADERS})

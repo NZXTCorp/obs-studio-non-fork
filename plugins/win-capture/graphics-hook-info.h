@@ -7,7 +7,9 @@
 
 #include "hook-helpers.h"
 
+#ifndef HOOK_SUFFIX
 #define HOOK_SUFFIX "Forge"
+#endif
 
 #define EVENT_CAPTURE_RESTART "CaptureHook_Restart" HOOK_SUFFIX
 #define EVENT_CAPTURE_STOP    "CaptureHook_Stop" HOOK_SUFFIX
