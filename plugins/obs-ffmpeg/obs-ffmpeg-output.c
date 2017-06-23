@@ -795,6 +795,9 @@ static void receive_audio(void *param, struct audio_data *frame)
 
 	AVCodecContext *context = data->audio->codec;
 
+	if (!data->video && !data->start_timestamp)
+		data->start_timestamp = frame->timestamp;
+
 	if (!data->start_timestamp)
 		return;
 	if (!prepare_audio(data, frame, &in))
