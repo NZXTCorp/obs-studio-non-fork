@@ -196,7 +196,9 @@ bool load_graphics_offsets(bool is32bit)
 		blog(LOG_INFO, "load_graphics_offsets: Failed to load string");
 	}
 
-	os_process_pipe_destroy(pp);
+	int code = os_process_pipe_destroy(pp);
+	if (code)
+		blog(LOG_WARNING, "load_graphics_offsets%s.exe exited with code %d", is32bit ? "32" : "64", code);
 
 error:
 	bfree(offset_exe_path);
