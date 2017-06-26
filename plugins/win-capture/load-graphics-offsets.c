@@ -188,7 +188,8 @@ bool load_graphics_offsets(bool is32bit)
 			"tmp", NULL);
 	bfree(config_ini);
 
-	blog(LOG_INFO, "load_graphics_offsets%d:\n%s", is32bit ? 32 : 64, str.array);
+	if (str.len)
+		blog(LOG_INFO, "load_graphics_offsets%d:\n%s", is32bit ? 32 : 64, str.array);
 
 	success = load_offsets_from_string(is32bit ? &offsets32 : &offsets64,
 			str.array);
