@@ -37,7 +37,6 @@
 #define SETTING_PROCESS_ID       "process_id"
 #define SETTING_THREAD_ID        "thread_id"
 #define SETTING_HWND             "hwnd"
-#define SETTING_OVERLAY_IPC      "overlay_ipc_name"
 
 #define TEXT_GAME_CAPTURE        obs_module_text("GameCapture")
 #define TEXT_ANY_FULLSCREEN      obs_module_text("GameCapture.AnyFullscreen")
@@ -76,7 +75,6 @@ struct game_capture_config {
 	bool                          allow_ipc_injector : 1;
 	char                          *overlay_dll;
 	char                          *overlay_dll64;
-	char                          *overlay_ipc_name;
 	DWORD                         process_id;
 	DWORD                         thread_id;
 	HWND                          hwnd;
@@ -371,9 +369,6 @@ static inline void get_config(struct game_capture_config *cfg,
 	cfg->overlay_dll64 = bstrdup(
 			obs_data_get_string(settings, SETTING_OVERLAY_DLL64));
 
-	cfg->overlay_ipc_name = bstrdup(
-			obs_data_get_string(settings, SETTING_OVERLAY_IPC));
-
 	cfg->process_id = (DWORD)obs_data_get_int(settings, SETTING_PROCESS_ID);
 	cfg->thread_id = (DWORD)obs_data_get_int(settings, SETTING_THREAD_ID);
 	cfg->hwnd = (HWND)obs_data_get_int(settings, SETTING_HWND);
@@ -422,9 +417,6 @@ static inline bool capture_needs_reset(struct game_capture_config *cfg1,
 		return true;
 	} else if (cfg1->overlay_dll64 != cfg2->overlay_dll64 ||
 			strcmp(cfg1->overlay_dll64, cfg2->overlay_dll64)) {
-		return true;
-	} else if (cfg1->overlay_ipc_name != cfg2->overlay_ipc_name ||
-			strcmp(cfg1->overlay_ipc_name, cfg2->overlay_ipc_name)) {
 		return true;
 	}
 
@@ -821,10 +813,6 @@ copy_config:
 		(gc->config.overlay_dll64 ? gc->config.overlay_dll64 : "") :
 		(gc->config.overlay_dll ? gc->config.overlay_dll : "");
 	strncpy(gc->global_hook_info->overlay_dll_path, path, MAX_PATH);
-
-	if (gc->config.overlay_ipc_name)
-		strncpy(gc->global_hook_info->overlay_ipc_name, gc->config.overlay_ipc_name,
-			sizeof(gc->global_hook_info->overlay_ipc_name) / sizeof(gc->global_hook_info->overlay_ipc_name[0]));
 
 	obs_enter_graphics();
 	LUID *luid = (LUID*)gs_get_device_luid();

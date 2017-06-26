@@ -110,7 +110,6 @@ struct hook_info {
 
 	/* overlay handling */
 	char                           overlay_dll_path[MAX_PATH];
-	char                           overlay_ipc_name[256];
 };
 
 #pragma pack(pop)
