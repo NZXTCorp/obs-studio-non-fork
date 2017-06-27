@@ -73,12 +73,13 @@ static HANDLE                  init_log_file                  = NULL;
 
 static void open_init_log(void)
 {
+#ifdef HOOK_INIT_LOG_PATH
 	wchar_t log_file_path[MAX_PATH];
 	wchar_t *fpath;
 	if (FAILED(SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &fpath)))
 		return;
 
-	int res = swprintf(log_file_path, MAX_PATH, L"%s/Forge/logs/hook-init-log-%ld.log", fpath, GetCurrentProcessId());
+	int res = swprintf(log_file_path, MAX_PATH, L"%s/" TEXT(HOOK_INIT_LOG_PATH) L"/hook-init-log-%ld.log", fpath, GetCurrentProcessId());
 	CoTaskMemFree(fpath);
 
 	if (res < 1)
@@ -88,6 +89,7 @@ static void open_init_log(void)
 	init_log_file = CreateFileW(log_file_path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (init_log_file == INVALID_HANDLE_VALUE)
 		init_log_file = NULL;
+#endif
 }
 
 static void close_init_log(void)

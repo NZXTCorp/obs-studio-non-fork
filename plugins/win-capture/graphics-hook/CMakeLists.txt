@@ -7,6 +7,12 @@ configure_file(
 	"${CMAKE_BINARY_DIR}/plugins/win-capture/graphics-hook/config/graphics-hook-config.h")
 
 
+set(HOOK_INIT_LOG_PATH "" CACHE STRING "Set path for early hook initialization logs, e.g.: 'Forge/logs' will expand to '%LOCALAPPDATA%/Forge/logs/hook-init-log-%HOOKED_PID%.log'")
+if (HOOK_INIT_LOG_PATH)
+    add_definitions(-DHOOK_INIT_LOG_PATH="${HOOK_INIT_LOG_PATH}")
+endif()
+
+
 set(graphics-hook_HEADERS
 	"${CMAKE_BINARY_DIR}/plugins/win-capture/graphics-hook/config/graphics-hook-config.h"
 	graphics-hook.h
