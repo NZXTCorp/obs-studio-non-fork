@@ -56,7 +56,11 @@ static bool dxgi_check_luid(IDXGISwapChain *swap)
 	IDXGIDevice *device;
 	HRESULT hr = swap->GetDevice(__uuidof(IDXGIDevice), (void**)&device);
 	if (FAILED(hr)) {
-		hlog_hr("dxgi_check_luid: Failed to get IDXGIDevice", hr);
+		static bool e_nointerface_logged = false;
+		if (hr != E_NOINTERFACE || !e_nointerface_logged)
+			hlog_hr("dxgi_check_luid: Failed to get IDXGIDevice", hr);
+		if (hr == E_NOINTERFACE)
+			e_nointerface_logged = true;
 		return true;
 	}
 
