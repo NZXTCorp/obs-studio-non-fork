@@ -210,6 +210,8 @@ bool obs_output_actual_start(obs_output_t *output)
 	if (output->delay_restart_refs)
 		os_atomic_dec_long(&output->delay_restart_refs);
 
+	output->started = success;
+
 	return success;
 }
 
