@@ -678,6 +678,8 @@ struct obs_output {
 	bool                            stop_thread_initialized;
 	pthread_t                       stop_thread;
 
+	bool                            default_video;
+	bool                            default_audio;
 	video_t                         *video;
 	audio_t                         *audio;
 	obs_encoder_t                   *video_encoder;

@@ -89,8 +89,8 @@ obs_output_t *obs_output_create(const char *id, const char *name,
 	} else {
 		output->info = *info;
 	}
-	output->video    = obs_get_video();
-	output->audio    = obs_get_audio();
+	output->default_video = true;
+	output->default_audio = true;
 	if (output->info.get_defaults)
 		output->info.get_defaults(output->context.settings);
 
@@ -193,16 +193,16 @@ bool obs_output_actual_start(obs_output_t *output)
 	if (output->context.data)
 		success = output->info.start(output->context.data);
 
-	if (success && output->video) {
+	if (success && obs_output_video(output)) {
 		if (output->stop_thread_initialized) {
 			pthread_join(output->stop_thread, NULL);
 			output->stop_thread_initialized = false;
 		}
 
 		output->starting_frame_count =
-			video_output_get_total_frames(output->video);
+			video_output_get_total_frames(obs_output_video(output));
 		output->starting_skipped_frame_count =
-			video_output_get_skipped_frames(output->video);
+			video_output_get_skipped_frames(obs_output_video(output));
 		output->starting_drawn_count = obs->video.total_frames;
 		output->starting_lagged_count = obs->video.lagged_frames;
 	}
@@ -247,8 +247,8 @@ static void log_frame_info(struct obs_output *output)
 {
 	struct obs_core_video *video = &obs->video;
 
-	uint32_t video_frames  = video_output_get_total_frames(output->video);
-	uint32_t video_skipped = video_output_get_skipped_frames(output->video);
+	uint32_t video_frames  = video_output_get_total_frames(obs_output_video(output));
+	uint32_t video_skipped = video_output_get_skipped_frames(obs_output_video(output));
 
 	uint32_t total   = video_frames  - output->starting_frame_count;
 	uint32_t skipped = video_skipped - output->starting_skipped_frame_count;
@@ -314,7 +314,7 @@ void obs_output_actual_stop(obs_output_t *output, bool force)
 	if (output->context.data)
 		output->info.stop(output->context.data);
 
-	if (output->video)
+	if (obs_output_video(output))
 		log_frame_info(output);
 
 	if (output->delay_active && (force || !output->delay_restart_refs)) {
@@ -488,20 +488,25 @@ void obs_output_set_media(obs_output_t *output, video_t *video, audio_t *audio)
 	if (!obs_output_valid(output, "obs_output_set_media"))
 		return;
 
+	output->default_video = false;
+	output->default_audio = false;
+
 	output->video = video;
 	output->audio = audio;
 }
 
 video_t *obs_output_video(const obs_output_t *output)
 {
-	return obs_output_valid(output, "obs_output_video") ?
-		output->video : NULL;
+	if (!obs_output_valid(output, "obs_output_video"))
+		return NULL;
+	return output->default_video ? obs_get_video() : output->video;
 }
 
 audio_t *obs_output_audio(const obs_output_t *output)
 {
-	return obs_output_valid(output, "obs_output_audio") ?
-		output->audio : NULL;
+	if (!obs_output_valid(output, "obs_output_audio"))
+		return NULL;
+	return output->default_audio ? obs_get_audio() : output->audio;
 }
 
 void obs_output_set_mixer(obs_output_t *output, size_t mixer_idx)
@@ -714,7 +719,7 @@ uint32_t obs_output_get_width(const obs_output_t *output)
 	else
 		return output->scaled_width != 0 ?
 			output->scaled_width :
-			video_output_get_width(output->video);
+			video_output_get_width(obs_output_video(output));
 }
 
 uint32_t obs_output_get_height(const obs_output_t *output)
@@ -729,7 +734,7 @@ uint32_t obs_output_get_height(const obs_output_t *output)
 	else
 		return output->scaled_height != 0 ?
 			output->scaled_height :
-			video_output_get_height(output->video);
+			video_output_get_height(obs_output_video(output));
 }
 
 void obs_output_set_video_conversion(obs_output_t *output,
@@ -804,7 +809,7 @@ static inline bool audio_valid(const struct obs_output *output, bool encoded)
 			}
 		}
 	} else {
-		if (!output->audio)
+		if (!obs_output_audio(output))
 			return false;
 	}
 
@@ -819,7 +824,7 @@ static bool can_begin_data_capture(const struct obs_output *output,
 			if (!output->video_encoder)
 				return false;
 		} else {
-			if (!output->video)
+			if (!obs_output_video(output))
 				return false;
 		}
 	}
@@ -838,8 +843,9 @@ static bool can_begin_data_capture(const struct obs_output *output,
 
 static inline bool has_scaling(const struct obs_output *output)
 {
-	uint32_t video_width  = video_output_get_width(output->video);
-	uint32_t video_height = video_output_get_height(output->video);
+	video_t *video        = obs_output_video(output);
+	uint32_t video_width  = video_output_get_width(video);
+	uint32_t video_height = video_output_get_height(video);
 
 	return output->scaled_width && output->scaled_height &&
 		(video_width  != output->scaled_width ||
@@ -862,7 +868,7 @@ static inline struct video_scale_info *get_video_conversion(
 
 	} else if (has_scaling(output)) {
 		const struct video_output_info *info =
-			video_output_get_info(output->video);
+			video_output_get_info(obs_output_video(output));
 
 		output->video_conversion.format     = info->format;
 		output->video_conversion.colorspace = VIDEO_CS_DEFAULT;
@@ -1350,11 +1356,11 @@ static void hook_data_capture(struct obs_output *output, bool encoded,
 			start_audio_encoders(output, encoded_callback);
 	} else {
 		if (has_video)
-			video_output_connect(output->video,
+			video_output_connect(obs_output_video(output),
 					get_video_conversion(output),
 					default_raw_video_callback, output);
 		if (has_audio)
-			audio_output_connect(output->audio, output->mixer_idx,
+			audio_output_connect(obs_output_audio(output), output->mixer_idx,
 					get_audio_conversion(output),
 					default_raw_audio_callback, output);
 	}
@@ -1587,10 +1593,10 @@ void obs_output_end_data_capture(obs_output_t *output)
 			stop_audio_encoders(output, encoded_callback);
 	} else {
 		if (has_video)
-			video_output_disconnect(output->video,
+			video_output_disconnect(obs_output_video(output),
 					default_raw_video_callback, output);
 		if (has_audio)
-			audio_output_disconnect(output->audio,
+			audio_output_disconnect(obs_output_audio(output),
 					output->mixer_idx,
 					default_raw_audio_callback, output);
 	}
