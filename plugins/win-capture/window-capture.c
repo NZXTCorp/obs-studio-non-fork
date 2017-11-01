@@ -60,10 +60,18 @@ static const char *wc_getname(void *unused)
 	return TEXT_WINDOW_CAPTURE;
 }
 
+static const char *capture_signals[] = {
+	"void start_capture(ptr source, int width, int height)",
+	NULL
+};
+
 static void *wc_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct window_capture *wc = bzalloc(sizeof(struct window_capture));
 	wc->source = source;
+
+	signal_handler_t *signal = obs_source_get_signal_handler(source);
+	signal_handler_add_array(signal, capture_signals);
 
 	update_settings(wc, settings);
 	return wc;
@@ -193,6 +201,20 @@ static void wc_tick(void *data, float seconds)
 
 	dc_capture_capture(&wc->capture, wc->window);
 	obs_leave_graphics();
+
+	if (reset_capture) {
+		calldata_t data = { 0 };
+
+		calldata_set_ptr(&data, "source", wc->source);
+		calldata_set_int(&data, "width", rect.right);
+		calldata_set_int(&data, "height", rect.bottom);
+
+		signal_handler_signal(
+			obs_source_get_signal_handler(wc->source),
+			"start_capture", &data);
+
+		calldata_free(&data);
+	}
 }
 
 static void wc_render(void *data, gs_effect_t *effect)
