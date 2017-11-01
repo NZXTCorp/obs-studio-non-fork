@@ -23,6 +23,8 @@ struct window_capture {
 	bool                 compatibility;
 	bool                 use_wildcards; /* TODO */
 
+	DWORD                process_id;
+
 	struct dc_capture    capture;
 
 	float                resize_timer;
@@ -41,6 +43,8 @@ static void update_settings(struct window_capture *wc, obs_data_t *s)
 	bfree(wc->executable);
 
 	build_window_strings(window, &wc->class, &wc->title, &wc->executable);
+
+	wc->process_id = obs_data_get_int(s, "process_id");
 
 	wc->priority      = (enum window_priority)priority;
 	wc->cursor        = obs_data_get_bool(s, "cursor");
@@ -144,12 +148,16 @@ static void wc_tick(void *data, float seconds)
 	if (!obs_source_showing(wc->source))
 		return;
 
-	if (!wc->window || !IsWindow(wc->window)) {
-		if (!wc->title && !wc->class)
-			return;
+	if (wc->window && !IsWindow(wc->window))
+		wc->window = NULL;
 
-		wc->window = find_window(EXCLUDE_MINIMIZED, wc->priority,
-				wc->class, wc->title, wc->executable);
+	if (!wc->window) {
+		if (wc->process_id)
+			wc->window = find_window_pid(EXCLUDE_MINIMIZED, wc->process_id);
+		else if (wc->title || wc->class)
+			wc->window = find_window(EXCLUDE_MINIMIZED, wc->priority,
+					wc->class, wc->title, wc->executable);
+
 		if (!wc->window)
 			return;
 
