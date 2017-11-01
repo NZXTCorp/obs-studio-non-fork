@@ -27,3 +27,5 @@ extern HWND find_window(enum window_search_mode mode,
 		const char *class,
 		const char *title,
 		const char *exe);
+
+extern HWND find_window_pid(enum window_search_mode mode, DWORD pid);

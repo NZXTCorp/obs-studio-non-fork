@@ -4,6 +4,7 @@
 
 #include <windows.h>
 #include <psapi.h>
+#include <TlHelp32.h>
 #include "window-helpers.h"
 #include "obfuscate.h"
 
@@ -275,4 +276,53 @@ HWND find_window(enum window_search_mode mode,
 	}
 
 	return best_window;
+}
+
+struct find_window_pid_param {
+	HWND *window;
+	enum window_search_mode mode;
+};
+
+static BOOL CALLBACK find_window_pid_enum_func(HWND window, LPARAM lparam)
+{
+	struct find_window_pid_param *param = (void*)lparam;
+	if (!check_window_valid(window, param->mode))
+		return true;
+
+	*param->window = window;
+	return false;
+}
+
+HWND find_window_pid(enum window_search_mode mode, DWORD pid)
+{
+	HWND window = NULL;
+
+	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, pid);
+	if (snapshot == INVALID_HANDLE_VALUE)
+		return window;
+
+	THREADENTRY32 te;
+	te.dwSize = sizeof(te);
+
+	struct find_window_pid_param param = {
+		&window,
+		mode
+	};
+
+	if (!Thread32First(snapshot, &te))
+		goto close;
+
+	do {
+		if (te.th32OwnerProcessID != pid)
+			continue;
+
+		EnumThreadWindows(te.th32ThreadID, find_window_pid_enum_func, (LPARAM)&param);
+		if (window)
+			break;
+	} while (Thread32Next(snapshot, &te));
+
+close:
+	CloseHandle(snapshot);
+
+	return window;
 }
