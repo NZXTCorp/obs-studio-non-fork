@@ -237,7 +237,7 @@ static inline void init_cache(struct video_output *video)
 		frame = (struct video_frame*)&video->cache[i];
 
 		video_frame_init(frame, video->info.format,
-				video->info.width, video->info.height);
+				video->info.width, video->info.height, false);
 		da_init(video->cache[i].tracked_ids);
 	}
 
@@ -352,7 +352,7 @@ static inline bool video_input_init(struct video_input *input,
 			video_frame_init(&input->frame[i],
 					input->conversion.format,
 					input->conversion.width,
-					input->conversion.height);
+					input->conversion.height, true);
 	}
 
 	return true;

@@ -26,7 +26,7 @@ struct video_frame {
 };
 
 EXPORT void video_frame_init(struct video_frame *frame,
-		enum video_format format, uint32_t width, uint32_t height);
+		enum video_format format, uint32_t width, uint32_t height, bool swscale_align);
 
 static inline void video_frame_free(struct video_frame *frame)
 {
@@ -42,7 +42,7 @@ static inline struct video_frame *video_frame_create(
 	struct video_frame *frame;
 
 	frame = (struct video_frame*)bzalloc(sizeof(struct video_frame));
-	video_frame_init(frame, format, width, height);
+	video_frame_init(frame, format, width, height, false);
 	return frame;
 }
 

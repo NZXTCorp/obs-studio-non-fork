@@ -326,7 +326,7 @@ void obs_source_frame_init(struct obs_source_frame *frame,
 	if (!obs_ptr_valid(frame, "obs_source_frame_init"))
 		return;
 
-	video_frame_init(&vid_frame, format, width, height);
+	video_frame_init(&vid_frame, format, width, height, false);
 	frame->format = format;
 	frame->width  = width;
 	frame->height = height;
