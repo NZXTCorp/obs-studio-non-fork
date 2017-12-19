@@ -262,6 +262,16 @@ void gs_device::InitDevice(uint32_t adapterIdx)
 	if (FAILED(hr))
 		throw UnsupportedHWError("Failed to create device", hr);
 
+	ComPtr<IDXGIDevice> dxgi_device;
+	hr = device->QueryInterface(dxgi_device.Assign());
+	if (FAILED(hr))
+		blog(LOG_WARNING, "Failed to query IDXGIDevice from D3D11 device %#x", hr);
+	else {
+		hr = dxgi_device->SetGPUThreadPriority(7); // 7 is max according to https://msdn.microsoft.com/en-us/library/windows/desktop/bb174534(v=vs.85).aspx
+		if (FAILED(hr))
+			blog(LOG_WARNING, "SetGPUThreadPriority failed %#x", hr);
+	}
+
 	blog(LOG_INFO, "D3D11 loaded sucessfully, feature level used: %u",
 			(unsigned int)levelUsed);
 }
