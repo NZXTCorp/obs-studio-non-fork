@@ -1736,7 +1736,7 @@ static void handle_injector_exit_code(struct game_capture *gc, DWORD code, const
 		gc->config.anticheat_hook = true;
 	}
 
-	if (code != 0 && code != INJECT_ERROR_UNLIKELY_FAIL) {
+	if (code != 0 && code != INJECT_ERROR_UNLIKELY_FAIL && code != INJECT_ERROR_INJECTPROC_FAIL) {
 		gc->error_acquiring = true;
 
 	} else if (!gc->capturing) {
