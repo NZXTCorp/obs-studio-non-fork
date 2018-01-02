@@ -76,7 +76,13 @@ extern struct hook_info *global_hook_info;
 extern HMODULE overlay_dll;
 
 
-typedef bool (*overlay_init_t)(void (*hlog)(const char *fmt, ...));
+bool d3d9_create_shared_tex_(UINT width, UINT height, DWORD format, void **tex, void **shared_handle);
+bool d3d9_luid(void *target);
+typedef bool (*d3d9_create_shared_tex_t)(UINT, UINT, DWORD, void**, void**);
+typedef bool (*d3d9_luid_t)(void*);
+
+typedef bool (*overlay_init_t)(void (*hlog)(const char *fmt, ...),
+	d3d9_create_shared_tex_t, d3d9_luid_t);
 typedef void (*overlay_free_t)(void);
 typedef void (*overlay_reset_t)(void);
 typedef void (*overlay_compile_dxgi_shaders_t)(/*pD3DCompile*/void(*)(void));

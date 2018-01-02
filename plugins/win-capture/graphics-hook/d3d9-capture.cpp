@@ -60,6 +60,7 @@ struct d3d9_data {
 		};
 	};
 	volatile bool          issued_queries[NUM_BUFFERS];
+	LUID luid_storage, *luid = nullptr;
 };
 
 static struct d3d9_data data = {};
@@ -108,8 +109,23 @@ static bool luid_matches(IDXGIAdapter *adapter)
 		return true;
 	}
 
-	return desc.AdapterLuid.LowPart == global_hook_info->luid.LowPart &&
-		desc.AdapterLuid.HighPart == global_hook_info->luid.HighPart;
+	if (desc.AdapterLuid.LowPart != global_hook_info->luid.LowPart ||
+		desc.AdapterLuid.HighPart != global_hook_info->luid.HighPart)
+		return false;
+
+	data.luid_storage = desc.AdapterLuid;
+	data.luid = &data.luid_storage;
+	return true;
+}
+
+bool d3d9_luid(void *target)
+{
+	auto luid = reinterpret_cast<LUID*>(target);
+	if (!luid || !data.luid)
+		return false;
+
+	*luid = *data.luid;
+	return true;
 }
 
 static DXGI_FORMAT d3d9_to_dxgi_format(D3DFORMAT format)

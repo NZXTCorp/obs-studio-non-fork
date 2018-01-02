@@ -297,7 +297,8 @@ void init_overlay_info(void)
 	LOAD_SYM(init);
 	LOAD_SYM(free);
 
-	if (overlay_info.init && !overlay_info.init(hlog)) {
+	if (overlay_info.init && !overlay_info.init(hlog,
+		d3d9_create_shared_tex_, d3d9_luid)) {
 		hlog("Overlay init returned false");
 		free_overlay();
 		return;
