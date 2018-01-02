@@ -249,15 +249,17 @@ static inline bool d3d9_shtex_init_shtex()
 	return true;
 }
 
-static inline bool d3d9_shtex_init_copytex()
+static bool d3d9_create_shared_tex(UINT width, UINT height, D3DFORMAT format, IDirect3DTexture9 **tex, HANDLE *shared_handle)
 {
+	if (!global_hook_info || !data.device)
+		return false;
+
 	struct d3d9_offsets offsets = global_hook_info->offsets.d3d9;
 	uint8_t *patch_addr = nullptr;
 	BOOL *p_is_d3d9 = nullptr;
 	uint8_t saved_data[MAX_PATCH_SIZE];
 	size_t patch_size = 0;
 	BOOL was_d3d9ex = false;
-	IDirect3DTexture9 *tex;
 	DWORD protect_val;
 	HRESULT hr;
 
@@ -267,6 +269,9 @@ static inline bool d3d9_shtex_init_copytex()
 			*(uint8_t**)(device_ptr + offsets.d3d9_clsoff);
 		p_is_d3d9 = (BOOL*)(d3d9_ptr + offsets.is_d3d9ex_clsoff);
 	} else {
+		if (!data.d3d9 || data.patch < 0)
+			return false;
+
 		patch_addr = get_d3d9_patch_addr(data.d3d9, data.patch);
 	}
 
@@ -282,9 +287,9 @@ static inline bool d3d9_shtex_init_copytex()
 		memcpy(patch_addr, patch[data.patch].data, patch_size);
 	}
 
-	hr = data.device->CreateTexture(data.cx, data.cy, 1,
-			D3DUSAGE_RENDERTARGET, data.d3d9_format,
-			D3DPOOL_DEFAULT, &tex, &data.handle);
+	hr = data.device->CreateTexture(width, height, 1,
+			D3DUSAGE_RENDERTARGET, format,
+			D3DPOOL_DEFAULT, tex, shared_handle);
 
 	if (p_is_d3d9) {
 		*p_is_d3d9 = was_d3d9ex;
@@ -296,10 +301,26 @@ static inline bool d3d9_shtex_init_copytex()
 	}
 
 	if (FAILED(hr)) {
-		hlog_hr("d3d9_shtex_init_copytex: Failed to create shared texture",
+		hlog_hr("d3d9_create_shared_tex: Failed to create shared texture",
 				hr);
 		return false;
 	}
+
+	return true;
+}
+
+bool d3d9_create_shared_tex_(UINT width, UINT height, DWORD format, void **tex, void **shared_handle)
+{
+	return d3d9_create_shared_tex(width, height, static_cast<D3DFORMAT>(format), reinterpret_cast<IDirect3DTexture9**>(tex), shared_handle);
+}
+
+static inline bool d3d9_shtex_init_copytex()
+{
+	IDirect3DTexture9 *tex;
+	HRESULT hr;
+
+	if (!d3d9_create_shared_tex(data.cx, data.cy, data.d3d9_format, &tex, &data.handle))
+		return false;
 
 	hr = tex->GetSurfaceLevel(0, &data.d3d9_copytex);
 	tex->Release();
