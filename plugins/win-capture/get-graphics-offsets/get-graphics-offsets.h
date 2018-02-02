@@ -25,6 +25,8 @@ extern void get_dxgi_offsets(struct dxgi_offsets *offsets);
 extern void get_d3d9_offsets(struct d3d9_offsets *offsets);
 extern void get_d3d8_offsets(struct d3d8_offsets *offsets);
 
+extern void Log(const char *message, ...);
+
 #ifdef __cplusplus
 }
 #endif

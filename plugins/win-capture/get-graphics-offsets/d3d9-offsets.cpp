@@ -26,16 +26,22 @@ static inline bool d3d9_init(d3d9_info &info)
 		return false;
 	}
 
+	Log("Loading d3d9.dll");
+
 	info.module = LoadLibraryA("d3d9.dll");
 	if (!info.module) {
 		return false;
 	}
+
+	Log("Loading Direct3DCreate9Ex");
 
 	create = (d3d9createex_t)GetProcAddress(info.module,
 			"Direct3DCreate9Ex");
 	if (!create) {
 		return false;
 	}
+
+	Log("Calling Direct3DCreate9Ex(%d)", D3D_SDK_VERSION);
 
 	hr = create(D3D_SDK_VERSION, &info.d3d9ex);
 	if (FAILED(hr)) {
@@ -52,6 +58,8 @@ static inline bool d3d9_init(d3d9_info &info)
 	pp.hDeviceWindow         = info.hwnd;
 	pp.PresentationInterval  = D3DPRESENT_INTERVAL_IMMEDIATE;
 
+	Log("Calling IDirect3D9Ex::CreateDeviceEx");
+
 	hr = info.d3d9ex->CreateDeviceEx(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
 			info.hwnd,
 			D3DCREATE_HARDWARE_VERTEXPROCESSING |
@@ -59,6 +67,8 @@ static inline bool d3d9_init(d3d9_info &info)
 	if (FAILED(hr)) {
 		return false;
 	}
+
+	Log("Calling IDirect3DDevice9Ex::GetSwapChain");
 
 	hr = info.device->GetSwapChain(0, &info.swap);
 	if (FAILED(hr)) {
@@ -215,6 +225,8 @@ void get_d3d9_offsets(struct d3d9_offsets *offsets)
 	bool      success = d3d9_init(info);
 
 	if (success) {
+		Log("Loading d3d9 offsets");
+
 		uint8_t **vt = *(uint8_t***)info.device;
 		uint8_t *crr = vt[125];
 
@@ -223,6 +235,8 @@ void get_d3d9_offsets(struct d3d9_offsets *offsets)
 				121);
 		offsets->present_swap = vtable_offset(info.module, info.swap,
 				3);
+
+		Log("Loading d3d9 clsoff");
 
 		uint32_t offset1, offset2;
 		for (size_t i = 0; i < MAX_FUNC_SCAN_BYTES; i++) {
@@ -264,5 +278,6 @@ void get_d3d9_offsets(struct d3d9_offsets *offsets)
 		}
 	}
 
+	Log("Freeing d3d9 data");
 	d3d9_free(info);
 }

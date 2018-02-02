@@ -25,15 +25,21 @@ static inline bool d3d8_init(d3d8_info &info)
 		return false;
 	}
 
+	Log("Loading d3d8.dll");
+
 	info.module = LoadLibraryA("d3d8.dll");
 	if (!info.module) {
 		return false;
 	}
 
+	Log("Loading Direct3DCreate8");
+
 	create = (d3d8create_t)GetProcAddress(info.module, "Direct3DCreate8");
 	if (!create) {
 		return false;
 	}
+
+	Log("Calling Direct3DCreate8");
 
 	info.d3d8 = create(D3D_SDK_VERSION);
 	if (!info.d3d8) {
@@ -48,6 +54,8 @@ static inline bool d3d8_init(d3d8_info &info)
 	pp.BackBufferHeight      = 2;
 	pp.BackBufferCount       = 1;
 	pp.hDeviceWindow         = info.hwnd;
+
+	Log("Calling IDirect3D8::CreateDevice");
 
 	hr = info.d3d8->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
 			info.hwnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &pp,
@@ -75,8 +83,10 @@ void get_d3d8_offsets(struct d3d8_offsets *offsets)
 	bool      success = d3d8_init(info);
 
 	if (success) {
+		Log("Loading d3d8 offsets");
 		offsets->present = vtable_offset(info.module, info.device, 15);
 	}
 
+	Log("Freeing d3d8 data");
 	d3d8_free(info);
 }

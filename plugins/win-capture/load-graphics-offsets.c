@@ -160,6 +160,7 @@ bool load_graphics_offsets(bool is32bit)
 	struct dstr offset_exe = {0};
 	char *config_ini = NULL;
 	struct dstr str = {0};
+	struct dstr progress_log = {0};
 	os_process_pipe_t *pp;
 	bool success = false;
 	char data[128];
@@ -180,7 +181,10 @@ bool load_graphics_offsets(bool is32bit)
 		if (!len)
 			break;
 
-		dstr_ncat(&str, data, len);
+		if (data[0] != ';')
+			dstr_ncat(&str, data, len);
+		else if (len >= 2)
+			dstr_ncat(&progress_log, data + 2, len - 2);
 	}
 
 	config_ini = obs_module_config_path(is32bit ? "32.ini" : "64.ini");
@@ -191,11 +195,16 @@ bool load_graphics_offsets(bool is32bit)
 	if (str.len)
 		blog(LOG_INFO, "load_graphics_offsets%d:\n%s", is32bit ? 32 : 64, str.array);
 
-	success = load_offsets_from_string(is32bit ? &offsets32 : &offsets64,
-			str.array);
+	struct graphics_offsets *offsets = is32bit ? &offsets32 : &offsets64;
+
+	success = load_offsets_from_string(offsets, str.array);
 	if (!success) {
 		blog(LOG_INFO, "load_graphics_offsets: Failed to load string");
 	}
+
+	if ((!offsets->d3d9.present || !offsets->dxgi.present) && progress_log.len)
+		blog(LOG_INFO, "load_graphics_offsets%d failed, progress log:\n%s",
+			is32bit ? 32 : 64, progress_log.array);
 
 	int code = os_process_pipe_destroy(pp);
 	if (code)
@@ -205,6 +214,7 @@ error:
 	bfree(offset_exe_path);
 	dstr_free(&offset_exe);
 	dstr_free(&str);
+	dstr_free(&progress_log);
 	return success;
 }
 

@@ -4,6 +4,21 @@
 #include <windows.h>
 #include "get-graphics-offsets.h"
 
+void Log(const char *message, ...)
+{
+	va_list args;
+	va_start(args, message);
+
+	char buf[1024];
+	vsprintf(buf, message, args);
+
+	va_end(args);
+
+	printf("; %s\n", buf);
+	
+	fflush(stdout);
+}
+
 int main(int argc, char *argv[])
 {
 	struct d3d8_offsets d3d8 = {0};
@@ -22,8 +37,13 @@ int main(int argc, char *argv[])
 	}
 
 	get_d3d9_offsets(&d3d9);
+	Log("---");
 	get_d3d8_offsets(&d3d8);
+	Log("---");
 	get_dxgi_offsets(&dxgi);
+	Log("---");
+
+	Log("Done loading offsets");
 
 	printf("[d3d8]\n");
 	printf("present=0x%"PRIx32"\n", d3d8.present);

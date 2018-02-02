@@ -36,10 +36,14 @@ static inline bool dxgi_init(dxgi_info &info)
 		return false;
 	}
 
+	Log("Loading dxgi.dll");
+
 	info.module = LoadLibraryA("dxgi.dll");
 	if (!info.module) {
 		return false;
 	}
+
+	Log("Loading CreateDXGIFactory1");
 
 	create_factory = (create_fac_t)GetProcAddress(info.module,
 			"CreateDXGIFactory1");
@@ -47,10 +51,14 @@ static inline bool dxgi_init(dxgi_info &info)
 		return false;
 	}
 
+	Log("Loading d3d10.dll");
+
 	d3d10_module = LoadLibraryA("d3d10.dll");
 	if (!d3d10_module) {
 		return false;
 	}
+
+	Log("Loading D3D10CreateDeviceAndSwapChain");
 
 	create = (d3d10create_t)GetProcAddress(d3d10_module,
 			"D3D10CreateDeviceAndSwapChain");
@@ -62,10 +70,14 @@ static inline bool dxgi_init(dxgi_info &info)
 		? dxgiFactory2
 		: __uuidof(IDXGIFactory1);
 
+	Log("Calling CreateDXGIFactory1");
+
 	hr = create_factory(&factory_iid, (void**)&factory);
 	if (FAILED(hr)) {
 		return false;
 	}
+
+	Log("Calling IDXGIFactory1::EnumAdapters1");
 
 	hr = factory->EnumAdapters1(0, &adapter);
 	factory->Release();
@@ -82,6 +94,8 @@ static inline bool dxgi_init(dxgi_info &info)
 	desc.OutputWindow         = info.hwnd;
 	desc.SampleDesc.Count     = 1;
 	desc.Windowed             = true;
+
+	Log("Calling D3D10CreateDeviceAndSwapChain");
 
 	hr = create(adapter, D3D10_DRIVER_TYPE_HARDWARE, nullptr, 0,
 			D3D10_SDK_VERSION, &desc, &info.swap, &device);
@@ -109,6 +123,8 @@ void get_dxgi_offsets(struct dxgi_offsets *offsets)
 	HRESULT   hr;
 
 	if (success) {
+		Log("Loading dxgi offsets");
+
 		offsets->present = vtable_offset(info.module, info.swap, 8);
 		offsets->resize  = vtable_offset(info.module, info.swap, 13);
 
@@ -122,5 +138,6 @@ void get_dxgi_offsets(struct dxgi_offsets *offsets)
 		}
 	}
 
+	Log("Freeing dxgi data");
 	dxgi_free(info);
 }
