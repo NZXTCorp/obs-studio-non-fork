@@ -1730,8 +1730,9 @@ static void handle_injector_exit_code(struct game_capture *gc, DWORD code, const
 		send_inject_failed(gc, (long)code);
 	}
 
-	if (!gc->config.anticheat_hook && code == INJECT_ERROR_VALLOC_DENIED) {
-		warn("normal hook failed with ERROR_ACCESS_DENIED, retrying with anti-cheat hook");
+	if (!gc->config.anticheat_hook && (code == INJECT_ERROR_VALLOC_DENIED || code == INJECT_ERROR_OPEN_PROCESS_FAIL)) {
+		warn("normal hook failed with %s, retrying with anti-cheat hook",
+			code == INJECT_ERROR_VALLOC_DENIED ? "ERROR_ACCESS_DENIED" : "OPEN_PROCESS_FAIL");
 		code = 0;
 		gc->config.anticheat_hook = true;
 	}
