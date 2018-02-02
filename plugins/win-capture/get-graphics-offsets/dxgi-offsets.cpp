@@ -43,6 +43,9 @@ static inline bool dxgi_init(dxgi_info &info)
 
 	create_factory = (create_fac_t)GetProcAddress(info.module,
 			"CreateDXGIFactory1");
+	if (!create_factory) {
+		return false;
+	}
 
 	d3d10_module = LoadLibraryA("d3d10.dll");
 	if (!d3d10_module) {
