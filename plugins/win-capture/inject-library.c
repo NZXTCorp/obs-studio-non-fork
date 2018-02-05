@@ -290,7 +290,7 @@ try_inject_process:
 
 			if (err != ERROR_INVALID_THREAD_ID && err != ERROR_NOT_ENOUGH_QUOTA) {
 				fprintf(stderr, "PostThreadMessage(%#x) failed: %#x\n", inject_data.thread_id[k], err);
-				return INJECT_ERROR_POSTTHREAD_FAIL;
+				return err == ERROR_ACCESS_DENIED ? INJECT_ERROR_POSTTHREAD_DENIED : INJECT_ERROR_POSTTHREAD_FAIL;
 			}
 
 			if (inject_data.num_threads > 1) {

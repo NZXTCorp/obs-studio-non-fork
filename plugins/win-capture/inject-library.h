@@ -16,6 +16,7 @@
 #define INJECT_ERROR_INJECTPROC_FAIL   -83
 #define INJECT_ERROR_POSTTHREAD_FAIL   -84
 #define INJECT_ERROR_RETRIES_EXHAUSTED -85
+#define INJECT_ERROR_POSTTHREAD_DENIED -86
 
 extern int inject_library_obf(HANDLE process, const wchar_t *dll,
 		const char *create_remote_thread_obf, uint64_t obf1,
