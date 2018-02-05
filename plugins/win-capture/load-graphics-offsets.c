@@ -161,6 +161,7 @@ bool load_graphics_offsets(bool is32bit)
 	char *config_ini = NULL;
 	struct dstr str = {0};
 	struct dstr progress_log = {0};
+	struct dstr buffer = {0};
 	os_process_pipe_t *pp;
 	bool success = false;
 	char data[128];
@@ -181,10 +182,22 @@ bool load_graphics_offsets(bool is32bit)
 		if (!len)
 			break;
 
-		if (data[0] != ';')
-			dstr_ncat(&str, data, len);
+		dstr_ncat(&buffer, data, len);
+	}
+
+	size_t start = 0;
+	for (size_t i = 0; i < buffer.len; i++) {
+		if (buffer.array[i] != '\n')
+			continue;
+
+		const char *str_ = buffer.array + start;
+		size_t len = i - start + 1;
+		if (*str_ != ';')
+			dstr_ncat(&str, str_, len);
 		else if (len >= 2)
-			dstr_ncat(&progress_log, data + 2, len - 2);
+			dstr_ncat(&progress_log, str_ + 2, len - 2);
+
+		start = i + 1;
 	}
 
 	config_ini = obs_module_config_path(is32bit ? "32.ini" : "64.ini");
@@ -215,6 +228,7 @@ error:
 	dstr_free(&offset_exe);
 	dstr_free(&str);
 	dstr_free(&progress_log);
+	dstr_free(&buffer);
 	return success;
 }
 

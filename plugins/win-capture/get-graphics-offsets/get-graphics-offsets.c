@@ -45,18 +45,22 @@ int main(int argc, char *argv[])
 
 	Log("Done loading offsets");
 
-	printf("[d3d8]\n");
-	printf("present=0x%"PRIx32"\n", d3d8.present);
-	printf("[d3d9]\n");
-	printf("present=0x%"PRIx32"\n", d3d9.present);
-	printf("present_ex=0x%"PRIx32"\n", d3d9.present_ex);
-	printf("present_swap=0x%"PRIx32"\n", d3d9.present_swap);
-	printf("d3d9_clsoff=0x%"PRIx32"\n", d3d9.d3d9_clsoff);
-	printf("is_d3d9ex_clsoff=0x%"PRIx32"\n", d3d9.is_d3d9ex_clsoff);
-	printf("[dxgi]\n");
-	printf("present=0x%"PRIx32"\n", dxgi.present);
-	printf("present1=0x%"PRIx32"\n", dxgi.present1);
-	printf("resize=0x%"PRIx32"\n", dxgi.resize);
+#define PRINT_OFFSET(x, ...) { printf(x, ##__VA_ARGS__); fflush(stdout); }
+	PRINT_OFFSET("[d3d8]\n");
+	PRINT_OFFSET("present=0x%"PRIx32"\n", d3d8.present);
+	PRINT_OFFSET("[d3d9]\n");
+	PRINT_OFFSET("present=0x%"PRIx32"\n", d3d9.present);
+	PRINT_OFFSET("present_ex=0x%"PRIx32"\n", d3d9.present_ex);
+	PRINT_OFFSET("present_swap=0x%"PRIx32"\n", d3d9.present_swap);
+	PRINT_OFFSET("d3d9_clsoff=0x%"PRIx32"\n", d3d9.d3d9_clsoff);
+	PRINT_OFFSET("is_d3d9ex_clsoff=0x%"PRIx32"\n", d3d9.is_d3d9ex_clsoff);
+	PRINT_OFFSET("[dxgi]\n");
+	PRINT_OFFSET("present=0x%"PRIx32"\n", dxgi.present);
+	PRINT_OFFSET("present1=0x%"PRIx32"\n", dxgi.present1);
+	PRINT_OFFSET("resize=0x%"PRIx32"\n", dxgi.resize);
+#undef PRINT_OFFSET
+
+	Log("Done printing offsets");
 
 	(void)argc;
 	(void)argv;
