@@ -898,6 +898,10 @@ static bool try_connect(struct ffmpeg_output *output)
 	bool success;
 	int ret;
 
+	struct video_scale_info info;
+	if (!obs_output_get_active_video_conversion(output->output, &info))
+		blog(LOG_WARNING, "Failed to get active video conversion for ffmpeg output '%s'", obs_output_get_name(output->output));
+
 	settings = obs_output_get_settings(output->output);
 	config.url = obs_data_get_string(settings, "url");
 	config.format_name = get_string_or_null(settings, "format_name");
@@ -918,13 +922,12 @@ static bool try_connect(struct ffmpeg_output *output)
 	config.scale_height = (int)obs_data_get_int(settings, "scale_height");
 	config.width  = (int)obs_output_get_width(output->output);
 	config.height = (int)obs_output_get_height(output->output);
-	config.format = obs_to_ffmpeg_video_format(
-			video_output_get_format(video));
+	config.format = obs_to_ffmpeg_video_format(info.format);
 
-	if (format_is_yuv(voi->format)) {
-		config.color_range = voi->range == VIDEO_RANGE_FULL ?
+	if (format_is_yuv(info.format)) {
+		config.color_range = info.range == VIDEO_RANGE_FULL ?
 			AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
-		config.color_space = voi->colorspace == VIDEO_CS_709 ?
+		config.color_space = info.colorspace == VIDEO_CS_709 ?
 			AVCOL_SPC_BT709 : AVCOL_SPC_BT470BG;
 	} else {
 		config.color_range = AVCOL_RANGE_UNSPECIFIED;

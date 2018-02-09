@@ -160,20 +160,8 @@ struct obs_video_info {
 	uint32_t            base_width;    /**< Base compositing width */
 	uint32_t            base_height;   /**< Base compositing height */
 
-	uint32_t            output_width;  /**< Output width */
-	uint32_t            output_height; /**< Output height */
-	enum video_format   output_format; /**< Output format */
-
 	/** Video adapter index to use (NOTE: avoid for optimus laptops) */
 	uint32_t            adapter;
-
-	/** Use shaders to convert to different color formats */
-	bool                gpu_conversion;
-
-	enum video_colorspace colorspace;  /**< YUV type (if YUV) */
-	enum video_range_type range;       /**< YUV range (if YUV) */
-
-	enum obs_scale_type scale_type;    /**< How to scale if scaling */
 };
 
 /**
@@ -1311,17 +1299,6 @@ EXPORT int obs_output_get_frames_dropped(const obs_output_t *output);
 EXPORT int obs_output_get_total_frames(const obs_output_t *output);
 EXPORT double obs_output_get_output_duration(const obs_output_t *output);
 
-/**
- * Sets the preferred scaled resolution for this output.  Set width and height
- * to 0 to disable scaling.
- *
- * If this output uses an encoder, it will call obs_encoder_set_scaled_size on
- * the encoder before the stream is started.  If the encoder is already active,
- * then this function will trigger a warning and do nothing.
- */
-EXPORT void obs_output_set_preferred_size(obs_output_t *output, uint32_t width,
-		uint32_t height);
-
 /** For video outputs, returns the width of the encoded image */
 EXPORT uint32_t obs_output_get_width(const obs_output_t *output);
 
@@ -1338,6 +1315,12 @@ EXPORT void *obs_output_get_type_data(obs_output_t *output);
 /** Optionally sets the video conversion info.  Used only for raw output */
 EXPORT void obs_output_set_video_conversion(obs_output_t *output,
 		const struct video_scale_info *conversion);
+
+EXPORT bool obs_output_get_video_conversion(obs_output_t *output,
+		struct video_scale_info *conversion);
+
+EXPORT bool obs_output_get_active_video_conversion(obs_output_t *output,
+		struct video_scale_info *conversion);
 
 /** Optionally sets the audio conversion info.  Used only for raw output */
 EXPORT void obs_output_set_audio_conversion(obs_output_t *output,
@@ -1438,14 +1421,6 @@ EXPORT const char *obs_encoder_get_codec(const obs_encoder_t *encoder);
 /** Returns the type of an encoder */
 EXPORT enum obs_encoder_type obs_encoder_get_type(const obs_encoder_t *encoder);
 
-/**
- * Sets the scaled resolution for a video encoder.  Set width and height to 0
- * to disable scaling.  If the encoder is active, this function will trigger
- * a warning, and do nothing.
- */
-EXPORT void obs_encoder_set_scaled_size(obs_encoder_t *encoder, uint32_t width,
-		uint32_t height);
-
 /** For video encoders, returns the width of the encoded image */
 EXPORT uint32_t obs_encoder_get_width(const obs_encoder_t *encoder);
 
@@ -1455,18 +1430,17 @@ EXPORT uint32_t obs_encoder_get_height(const obs_encoder_t *encoder);
 /** For audio encoders, returns the sample rate of the audio */
 EXPORT uint32_t obs_encoder_get_sample_rate(const obs_encoder_t *encoder);
 
-/**
- * Sets the preferred video format for a video encoder.  If the encoder can use
- * the format specified, it will force a conversion to that format if the
- * obs output format does not match the preferred format.
- *
- * If the format is set to VIDEO_FORMAT_NONE, will revert to the default
- * functionality of converting only when absolutely necessary.
- */
-EXPORT void obs_encoder_set_preferred_video_format(obs_encoder_t *encoder,
-		enum video_format format);
-EXPORT enum video_format obs_encoder_get_preferred_video_format(
-		const obs_encoder_t *encoder);
+
+/** Sets the video conversion info */
+EXPORT bool obs_encoder_set_video_conversion(obs_encoder_t *encoder,
+		const struct video_scale_info *conversion);
+
+EXPORT bool obs_encoder_get_video_conversion(obs_encoder_t *encoder,
+		struct video_scale_info *conversion);
+
+EXPORT bool obs_encoder_get_active_video_conversion(obs_encoder_t *encoder,
+		struct video_scale_info *conversion);
+
 
 /** Gets the default settings for an encoder type */
 EXPORT obs_data_t *obs_encoder_defaults(const char *id);

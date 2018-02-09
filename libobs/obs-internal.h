@@ -30,6 +30,7 @@
 #include "graphics/graphics.h"
 
 #include "media-io/audio-resampler.h"
+#include "media-io/video-frame.h"
 #include "media-io/video-io.h"
 #include "media-io/audio-io.h"
 
@@ -212,24 +213,112 @@ extern void obs_display_free(struct obs_display *display);
 /* ------------------------------------------------------------------------- */
 /* core */
 
+struct obs_video_output;
+typedef struct obs_video_output obs_video_output_t;
+struct obs_output_texture;
+typedef struct obs_output_texture obs_output_texture_t;
+
+struct obs_ready_frame {
+	obs_video_output_t   *output;
+	obs_output_texture_t *tex;
+	struct video_frame   frame;
+};
+typedef struct obs_ready_frame obs_ready_frame_t;
+
 struct obs_vframe_info {
 	uint64_t timestamp;
 	int count;
 
 	video_tracked_frame_id tracked_id;
+
+	int uses;
+
+	DARRAY(obs_ready_frame_t) data;
+};
+typedef struct obs_vframe_info obs_vframe_info_t;
+
+enum obs_output_texture_type {
+	OBS_OUTPUT_TEXTURE_TEX,
+	OBS_OUTPUT_TEXTURE_STAGESURF
+};
+
+struct obs_output_texture {
+	volatile long                refs;
+	enum obs_output_texture_type type;
+	union {
+		gs_texture_t   *tex;
+		gs_stagesurf_t *surf;
+	};
+};
+
+static inline void obs_output_texture_addref(obs_output_texture_t *tex)
+{
+	os_atomic_inc_long(&tex->refs);
+}
+
+static inline void obs_output_texture_release(obs_output_texture_t *tex)
+{
+	os_atomic_dec_long(&tex->refs);
+}
+
+typedef DARRAY(obs_video_output_t*) obs_video_outputs_t;
+
+struct obs_active_texture {
+	obs_output_texture_t *tex;
+	obs_vframe_info_t    *vframe_info;
+	obs_video_outputs_t  outputs;
+};
+typedef struct obs_active_texture obs_active_texture_t;
+
+typedef DARRAY(obs_active_texture_t) obs_active_textures_t;
+
+struct obs_texture_pipeline {
+	uint32_t width;
+	uint32_t height;
+
+	enum obs_output_texture_type type;
+
+	DARRAY(obs_output_texture_t*) textures;
+	obs_active_textures_t         active;
+	obs_active_textures_t         ready;
+	DARRAY(obs_video_outputs_t)   idle_output_lists;
+};
+typedef struct obs_texture_pipeline obs_texture_pipeline_t;
+
+typedef DARRAY(obs_texture_pipeline_t) obs_texture_pipelines_t;
+
+struct obs_video_output {
+	bool                expired;
+
+	uint32_t            conversion_height;
+	uint32_t            plane_offsets[3];
+	uint32_t            plane_sizes[3];
+	uint32_t            plane_linewidth[3];
+
+	float               color_matrix[16];
+
+	const char          *conversion_tech;
+
+	struct video_scale_info info;
 };
 
 struct obs_core_video {
 	graphics_t                      *graphics;
-	gs_stagesurf_t                  *copy_surfaces[NUM_TEXTURES];
-	gs_texture_t                    *render_textures[NUM_TEXTURES];
-	gs_texture_t                    *output_textures[NUM_TEXTURES];
-	gs_texture_t                    *convert_textures[NUM_TEXTURES];
-	bool                            textures_rendered[NUM_TEXTURES];
-	bool                            textures_output[NUM_TEXTURES];
-	bool                            textures_copied[NUM_TEXTURES];
-	bool                            textures_converted[NUM_TEXTURES];
-	struct circlebuf                vframe_info_buffer;
+	obs_texture_pipeline_t          render_textures;
+
+	obs_texture_pipelines_t         output_textures;
+	obs_texture_pipelines_t         convert_textures;
+	obs_texture_pipelines_t         copy_surfaces;
+
+	DARRAY(obs_output_texture_t*)   mapped_surfaces;
+
+	DARRAY(obs_vframe_info_t*)      vframe_info;
+	DARRAY(obs_vframe_info_t*)      active_vframe_info;
+
+	obs_video_outputs_t             outputs;
+	obs_video_outputs_t             active_outputs;
+	obs_video_outputs_t             expired_outputs;
+
 	gs_effect_t                     *default_effect;
 	gs_effect_t                     *default_rect_effect;
 	gs_effect_t                     *opaque_effect;
@@ -238,8 +327,6 @@ struct obs_core_video {
 	gs_effect_t                     *bicubic_effect;
 	gs_effect_t                     *lanczos_effect;
 	gs_effect_t                     *bilinear_lowres_effect;
-	gs_stagesurf_t                  *mapped_surface;
-	int                             cur_texture;
 
 	uint64_t                        video_time;
 	video_t                         *video;
@@ -248,19 +335,9 @@ struct obs_core_video {
 	uint32_t                        lagged_frames;
 	bool                            thread_initialized;
 
-	bool                            gpu_conversion;
-	const char                      *conversion_tech;
-	uint32_t                        conversion_height;
-	uint32_t                        plane_offsets[3];
-	uint32_t                        plane_sizes[3];
-	uint32_t                        plane_linewidth[3];
-
-	uint32_t                        output_width;
-	uint32_t                        output_height;
+	pthread_mutex_t                 resize_mutex;
 	uint32_t                        base_width;
 	uint32_t                        base_height;
-	float                           color_matrix[16];
-	enum obs_scale_type             scale_type;
 
 	pthread_mutex_t                 frame_tracker_mutex;
 	video_tracked_frame_id          last_tracked_frame_id;
@@ -688,9 +765,6 @@ struct obs_output {
 	obs_service_t                   *service;
 	size_t                          mixer_idx;
 
-	uint32_t                        scaled_width;
-	uint32_t                        scaled_height;
-
 	bool                            video_conversion_set;
 	bool                            audio_conversion_set;
 	struct video_scale_info         video_conversion;
@@ -766,10 +840,6 @@ struct obs_encoder {
 
 	size_t                          mixer_idx;
 
-	uint32_t                        scaled_width;
-	uint32_t                        scaled_height;
-	enum video_format               preferred_format;
-
 	bool                            active;
 
 	/* indicates ownership of the info.id buffer */
@@ -777,6 +847,17 @@ struct obs_encoder {
 
 	uint32_t                        timebase_num;
 	uint32_t                        timebase_den;
+
+	union {
+		struct {
+			bool                            video_conversion_set;
+			struct video_scale_info         video_conversion;
+		};
+		struct {
+			bool                            audio_conversion_set;
+			struct audio_convert_info       audio_conversion;
+		};
+	};
 
 	int64_t                         cur_pts;
 

@@ -143,30 +143,11 @@ static inline void get_audio_info(const struct obs_encoder *encoder,
 static inline void get_video_info(struct obs_encoder *encoder,
 		struct video_scale_info *info)
 {
-	const struct video_output_info *voi;
-	voi = video_output_get_info(encoder->media);
-
-	info->format     = voi->format;
-	info->colorspace = voi->colorspace;
-	info->range      = voi->range;
-	info->width      = obs_encoder_get_width(encoder);
-	info->height     = obs_encoder_get_height(encoder);
+	if (encoder->video_conversion_set)
+		*info = encoder->video_conversion;
 
 	if (encoder->info.get_video_info)
 		encoder->info.get_video_info(encoder->context.data, info);
-
-	if (info->width != voi->width || info->height != voi->height)
-		obs_encoder_set_scaled_size(encoder, info->width, info->height);
-}
-
-static inline bool has_scaling(const struct obs_encoder *encoder)
-{
-	uint32_t video_width  = video_output_get_width(encoder->media);
-	uint32_t video_height = video_output_get_height(encoder->media);
-
-	return encoder->scaled_width && encoder->scaled_height &&
-		(video_width  != encoder->scaled_width ||
-		 video_height != encoder->scaled_height);
 }
 
 static void add_connection(struct obs_encoder *encoder)
@@ -525,28 +506,6 @@ enum obs_encoder_type obs_get_encoder_type(const char *id)
 	return info ? info->type : OBS_ENCODER_AUDIO;
 }
 
-void obs_encoder_set_scaled_size(obs_encoder_t *encoder, uint32_t width,
-		uint32_t height)
-{
-	if (!obs_encoder_valid(encoder, "obs_encoder_set_scaled_size"))
-		return;
-	if (encoder->info.type != OBS_ENCODER_VIDEO) {
-		blog(LOG_WARNING, "obs_encoder_set_scaled_size: "
-				"encoder '%s' is not a video encoder",
-				obs_encoder_get_name(encoder));
-		return;
-	}
-	if (encoder->active) {
-		blog(LOG_WARNING, "encoder '%s': Cannot set the scaled "
-		                  "resolution while the encoder is active",
-		                  obs_encoder_get_name(encoder));
-		return;
-	}
-
-	encoder->scaled_width  = width;
-	encoder->scaled_height = height;
-}
-
 uint32_t obs_encoder_get_width(const obs_encoder_t *encoder)
 {
 	if (!obs_encoder_valid(encoder, "obs_encoder_get_width"))
@@ -557,12 +516,10 @@ uint32_t obs_encoder_get_width(const obs_encoder_t *encoder)
 				obs_encoder_get_name(encoder));
 		return 0;
 	}
-	if (!encoder->media)
+	if (!encoder->media || !encoder->video_conversion_set)
 		return 0;
 
-	return encoder->scaled_width != 0 ?
-		encoder->scaled_width :
-		video_output_get_width(encoder->media);
+	return encoder->video_conversion.width;
 }
 
 uint32_t obs_encoder_get_height(const obs_encoder_t *encoder)
@@ -575,12 +532,10 @@ uint32_t obs_encoder_get_height(const obs_encoder_t *encoder)
 				obs_encoder_get_name(encoder));
 		return 0;
 	}
-	if (!encoder->media)
+	if (!encoder->media || !encoder->video_conversion_set)
 		return 0;
 
-	return encoder->scaled_width != 0 ?
-		encoder->scaled_height :
-		video_output_get_height(encoder->media);
+	return encoder->video_conversion.height;
 }
 
 uint32_t obs_encoder_get_sample_rate(const obs_encoder_t *encoder)
@@ -971,24 +926,6 @@ void obs_free_encoder_packet(struct encoder_packet *packet)
 	memset(packet, 0, sizeof(struct encoder_packet));
 }
 
-void obs_encoder_set_preferred_video_format(obs_encoder_t *encoder,
-		enum video_format format)
-{
-	if (!encoder || encoder->info.type != OBS_ENCODER_VIDEO)
-		return;
-
-	encoder->preferred_format = format;
-}
-
-enum video_format obs_encoder_get_preferred_video_format(
-		const obs_encoder_t *encoder)
-{
-	if (!encoder || encoder->info.type != OBS_ENCODER_VIDEO)
-		return VIDEO_FORMAT_NONE;
-
-	return encoder->preferred_format;
-}
-
 void obs_encoder_addref(obs_encoder_t *encoder)
 {
 	if (!encoder)
@@ -1074,4 +1011,74 @@ const char *obs_encoder_get_id(const obs_encoder_t *encoder)
 {
 	return obs_encoder_valid(encoder, "obs_encoder_get_id")
 		? encoder->info.id : NULL;
+}
+
+bool obs_encoder_set_video_conversion(obs_encoder_t *encoder,
+		const struct video_scale_info *conversion)
+{
+	if (!obs_encoder_valid(encoder, "obs_encoder_set_video_conversion"))
+		return false;
+	if (encoder->info.type != OBS_ENCODER_VIDEO) {
+		blog(LOG_WARNING, "obs_encoder_set_video_conversion: "
+			"encoder '%s' is not a video encoder",
+			obs_encoder_get_name(encoder));
+		return false;
+	}
+	if (encoder->active) {
+		blog(LOG_WARNING, "obs_encoder_set_video_conversion: "
+			"can not set video conversion while encoder '%s' is active",
+			obs_encoder_get_name(encoder));
+		return false;
+	}
+
+	encoder->video_conversion_set = true;
+	encoder->video_conversion = *conversion;
+	return true;
+}
+
+bool obs_encoder_get_video_conversion(obs_encoder_t *encoder,
+		struct video_scale_info *conversion)
+{
+	if (!obs_encoder_valid(encoder, "obs_encoder_get_video_conversion"))
+		return false;
+	if (encoder->info.type != OBS_ENCODER_VIDEO) {
+		blog(LOG_WARNING, "obs_encoder_get_video_conversion: "
+			"encoder '%s' is not a video encoder",
+			obs_encoder_get_name(encoder));
+		return false;
+	}
+	if (!encoder->video_conversion_set) {
+		blog(LOG_WARNING, "obs_encoder_get_video_conversion: "
+			"encoder '%s' does not have a video conversion set",
+			obs_encoder_get_name(encoder));
+		return false;
+	}
+
+	*conversion = encoder->video_conversion;
+	return true;
+}
+
+bool obs_encoder_get_active_video_conversion(obs_encoder_t *encoder,
+		struct video_scale_info *conversion)
+{
+	if (!obs_encoder_valid(encoder, "obs_encoder_get_active_video_conversion"))
+		return false;
+	if (encoder->info.type != OBS_ENCODER_VIDEO) {
+		blog(LOG_WARNING, "obs_encoder_get_active_video_conversion: "
+			"encoder '%s' is not a video encoder",
+			obs_encoder_get_name(encoder));
+		return false;
+	}
+	if (!encoder->video_conversion_set) {
+		blog(LOG_WARNING, "obs_encoder_get_active_video_conversion: "
+			"encoder '%s' does not have a video conversion set",
+			obs_encoder_get_name(encoder));
+		return false;
+	}
+
+	*conversion = encoder->video_conversion;
+	if (encoder->context.data && encoder->info.get_video_info)
+		encoder->info.get_video_info(encoder->context.data, conversion);
+
+	return true;
 }

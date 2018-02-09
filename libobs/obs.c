@@ -17,7 +17,6 @@
 
 #include <inttypes.h>
 
-#include "graphics/matrix4.h"
 #include "callback/calldata.h"
 
 #include "obs.h"
@@ -32,187 +31,9 @@ static inline void make_video_info(struct video_output_info *vi,
 		struct obs_video_info *ovi)
 {
 	vi->name    = "video";
-	vi->format  = ovi->output_format;
 	vi->fps_num = ovi->fps_num;
 	vi->fps_den = ovi->fps_den;
-	vi->width   = ovi->output_width;
-	vi->height  = ovi->output_height;
-	vi->range   = ovi->range;
-	vi->colorspace = ovi->colorspace;
 	vi->cache_size = 6;
-}
-
-#define PIXEL_SIZE 4
-
-#define GET_ALIGN(val, align) \
-	(((val) + (align-1)) & ~(align-1))
-
-static inline void set_420p_sizes(const struct obs_video_info *ovi)
-{
-	struct obs_core_video *video = &obs->video;
-	uint32_t chroma_pixels;
-	uint32_t total_bytes;
-
-	chroma_pixels = (ovi->output_width * ovi->output_height / 4);
-	chroma_pixels = GET_ALIGN(chroma_pixels, PIXEL_SIZE);
-
-	video->plane_offsets[0] = 0;
-	video->plane_offsets[1] = ovi->output_width * ovi->output_height;
-	video->plane_offsets[2] = video->plane_offsets[1] + chroma_pixels;
-
-	video->plane_linewidth[0] = ovi->output_width;
-	video->plane_linewidth[1] = ovi->output_width/2;
-	video->plane_linewidth[2] = ovi->output_width/2;
-
-	video->plane_sizes[0] = video->plane_offsets[1];
-	video->plane_sizes[1] = video->plane_sizes[0]/4;
-	video->plane_sizes[2] = video->plane_sizes[1];
-
-	total_bytes = video->plane_offsets[2] + chroma_pixels;
-
-	video->conversion_height =
-		(total_bytes/PIXEL_SIZE + ovi->output_width-1) /
-		ovi->output_width;
-
-	video->conversion_height = GET_ALIGN(video->conversion_height, 2);
-	video->conversion_tech = "Planar420";
-}
-
-static inline void set_nv12_sizes(const struct obs_video_info *ovi)
-{
-	struct obs_core_video *video = &obs->video;
-	uint32_t chroma_pixels;
-	uint32_t total_bytes;
-
-	chroma_pixels = (ovi->output_width * ovi->output_height / 2);
-	chroma_pixels = GET_ALIGN(chroma_pixels, PIXEL_SIZE);
-
-	video->plane_offsets[0] = 0;
-	video->plane_offsets[1] = ovi->output_width * ovi->output_height;
-
-	video->plane_linewidth[0] = ovi->output_width;
-	video->plane_linewidth[1] = ovi->output_width;
-
-	video->plane_sizes[0] = video->plane_offsets[1];
-	video->plane_sizes[1] = video->plane_sizes[0]/2;
-
-	total_bytes = video->plane_offsets[1] + chroma_pixels;
-
-	video->conversion_height =
-		(total_bytes/PIXEL_SIZE + ovi->output_width-1) /
-		ovi->output_width;
-
-	video->conversion_height = GET_ALIGN(video->conversion_height, 2);
-	video->conversion_tech = "NV12";
-}
-
-static inline void set_444p_sizes(const struct obs_video_info *ovi)
-{
-	struct obs_core_video *video = &obs->video;
-	uint32_t chroma_pixels;
-	uint32_t total_bytes;
-
-	chroma_pixels = (ovi->output_width * ovi->output_height);
-	chroma_pixels = GET_ALIGN(chroma_pixels, PIXEL_SIZE);
-
-	video->plane_offsets[0] = 0;
-	video->plane_offsets[1] = chroma_pixels;
-	video->plane_offsets[2] = chroma_pixels + chroma_pixels;
-
-	video->plane_linewidth[0] = ovi->output_width;
-	video->plane_linewidth[1] = ovi->output_width;
-	video->plane_linewidth[2] = ovi->output_width;
-
-	video->plane_sizes[0] = chroma_pixels;
-	video->plane_sizes[1] = chroma_pixels;
-	video->plane_sizes[2] = chroma_pixels;
-
-	total_bytes = video->plane_offsets[2] + chroma_pixels;
-
-	video->conversion_height =
-		(total_bytes/PIXEL_SIZE + ovi->output_width-1) /
-		ovi->output_width;
-
-	video->conversion_height = GET_ALIGN(video->conversion_height, 2);
-	video->conversion_tech = "Planar444";
-}
-
-static inline void calc_gpu_conversion_sizes(const struct obs_video_info *ovi)
-{
-	obs->video.conversion_height = 0;
-	memset(obs->video.plane_offsets, 0, sizeof(obs->video.plane_offsets));
-	memset(obs->video.plane_sizes, 0, sizeof(obs->video.plane_sizes));
-	memset(obs->video.plane_linewidth, 0,
-		sizeof(obs->video.plane_linewidth));
-
-	switch ((uint32_t)ovi->output_format) {
-	case VIDEO_FORMAT_I420:
-		set_420p_sizes(ovi);
-		break;
-	case VIDEO_FORMAT_NV12:
-		set_nv12_sizes(ovi);
-		break;
-	case VIDEO_FORMAT_I444:
-		set_444p_sizes(ovi);
-		break;
-	}
-}
-
-static bool obs_init_gpu_conversion(struct obs_video_info *ovi)
-{
-	struct obs_core_video *video = &obs->video;
-
-	calc_gpu_conversion_sizes(ovi);
-
-	if (!video->conversion_height) {
-		blog(LOG_INFO, "GPU conversion not available for format: %u",
-				(unsigned int)ovi->output_format);
-		video->gpu_conversion = false;
-		return true;
-	}
-
-	for (size_t i = 0; i < NUM_TEXTURES; i++) {
-		video->convert_textures[i] = gs_texture_create(
-				ovi->output_width, video->conversion_height,
-				GS_RGBA, 1, NULL, GS_RENDER_TARGET);
-
-		if (!video->convert_textures[i])
-			return false;
-	}
-
-	return true;
-}
-
-static bool obs_init_textures(struct obs_video_info *ovi)
-{
-	struct obs_core_video *video = &obs->video;
-	uint32_t output_height = video->gpu_conversion ?
-		video->conversion_height : ovi->output_height;
-	size_t i;
-
-	for (i = 0; i < NUM_TEXTURES; i++) {
-		video->copy_surfaces[i] = gs_stagesurface_create(
-				ovi->output_width, output_height, GS_RGBA);
-
-		if (!video->copy_surfaces[i])
-			return false;
-
-		video->render_textures[i] = gs_texture_create(
-				ovi->base_width, ovi->base_height,
-				GS_RGBA, 1, NULL, GS_RENDER_TARGET);
-
-		if (!video->render_textures[i])
-			return false;
-
-		video->output_textures[i] = gs_texture_create(
-				ovi->output_width, ovi->output_height,
-				GS_RGBA, 1, NULL, GS_RENDER_TARGET);
-
-		if (!video->output_textures[i])
-			return false;
-	}
-
-	return true;
 }
 
 static int obs_init_graphics(struct obs_video_info *ovi)
@@ -295,71 +116,35 @@ static int obs_init_graphics(struct obs_video_info *ovi)
 	return success ? OBS_VIDEO_SUCCESS : OBS_VIDEO_FAIL;
 }
 
-static inline void set_video_matrix(struct obs_core_video *video,
-		struct obs_video_info *ovi)
-{
-	struct matrix4 mat;
-	struct vec4 r_row;
-
-	if (format_is_yuv(ovi->output_format)) {
-		video_format_get_parameters(ovi->colorspace, ovi->range,
-				(float*)&mat, NULL, NULL);
-		matrix4_inv(&mat, &mat);
-
-		/* swap R and G */
-		r_row = mat.x;
-		mat.x = mat.y;
-		mat.y = r_row;
-	} else {
-		matrix4_identity(&mat);
-	}
-
-	memcpy(video->color_matrix, &mat, sizeof(float) * 16);
-}
-
 static int obs_init_video(struct obs_video_info *ovi)
 {
 	struct obs_core_video *video = &obs->video;
 	struct video_output_info vi;
 	int errorcode;
 
-	make_video_info(&vi, ovi);
-	video->base_width     = ovi->base_width;
-	video->base_height    = ovi->base_height;
-	video->output_width   = ovi->output_width;
-	video->output_height  = ovi->output_height;
-	video->gpu_conversion = ovi->gpu_conversion;
-	video->scale_type     = ovi->scale_type;
+	if (!video->video) {
+		make_video_info(&vi, ovi);
+		errorcode = video_output_open(&video->video, &vi);
 
-	set_video_matrix(video, ovi);
-
-	errorcode = video_output_open(&video->video, &vi);
-
-	if (errorcode != VIDEO_OUTPUT_SUCCESS) {
-		if (errorcode == VIDEO_OUTPUT_INVALIDPARAM) {
-			blog(LOG_ERROR, "Invalid video parameters specified");
-			return OBS_VIDEO_INVALID_PARAM;
-		} else {
-			blog(LOG_ERROR, "Could not open video output");
+		if (errorcode != VIDEO_OUTPUT_SUCCESS) {
+			if (errorcode == VIDEO_OUTPUT_INVALIDPARAM) {
+				blog(LOG_ERROR, "Invalid video parameters specified");
+				return OBS_VIDEO_INVALID_PARAM;
+			} else {
+				blog(LOG_ERROR, "Could not open video output");
+			}
+			return OBS_VIDEO_FAIL;
 		}
-		return OBS_VIDEO_FAIL;
 	}
 
-	gs_enter_context(video->graphics);
-
-	if (ovi->gpu_conversion && !obs_init_gpu_conversion(ovi))
-		return OBS_VIDEO_FAIL;
-	if (!obs_init_textures(ovi))
-		return OBS_VIDEO_FAIL;
-
-	gs_leave_context();
-
-	errorcode = pthread_create(&video->video_thread, NULL,
+	if (!video->thread_initialized) {
+		errorcode = pthread_create(&video->video_thread, NULL,
 			obs_video_thread, obs);
-	if (errorcode != 0)
-		return OBS_VIDEO_FAIL;
+		if (errorcode != 0)
+			return OBS_VIDEO_FAIL;
 
-	video->thread_initialized = true;
+		video->thread_initialized = true;
+	}
 	return OBS_VIDEO_SUCCESS;
 }
 
@@ -375,7 +160,41 @@ static void stop_video(void)
 			video->thread_initialized = false;
 		}
 	}
+}
 
+static void free_pipeline(obs_texture_pipeline_t *pipeline)
+{
+	for (size_t i = 0; i < pipeline->textures.num; i++) {
+		switch (pipeline->type) {
+		case OBS_OUTPUT_TEXTURE_TEX:
+			gs_texture_destroy(pipeline->textures.array[i]->tex);
+			break;
+		case OBS_OUTPUT_TEXTURE_STAGESURF:
+			gs_stagesurface_destroy(pipeline->textures.array[i]->surf);
+			break;
+		}
+		bfree(pipeline->textures.array[i]);
+	}
+
+	for (size_t i = 0; i < pipeline->active.num; i++)
+		da_free(pipeline->active.array[i].outputs);
+	for (size_t i = 0; i < pipeline->ready.num; i++)
+		da_free(pipeline->active.array[i].outputs);
+	for (size_t i = 0; i < pipeline->idle_output_lists.num; i++)
+		da_free(pipeline->idle_output_lists.array[i]);
+
+	da_free(pipeline->textures);
+	da_free(pipeline->active);
+	da_free(pipeline->ready);
+	da_free(pipeline->idle_output_lists);
+}
+
+static void free_pipelines(obs_texture_pipelines_t *pipelines)
+{
+	for (size_t i = 0; i < pipelines->num; i++)
+		free_pipeline(pipelines->array + i);
+
+	da_free((*pipelines));
 }
 
 static void obs_free_video(void)
@@ -391,37 +210,36 @@ static void obs_free_video(void)
 
 		gs_enter_context(video->graphics);
 
-		if (video->mapped_surface) {
-			gs_stagesurface_unmap(video->mapped_surface);
-			video->mapped_surface = NULL;
-		}
+		for (size_t i = 0; i < video->mapped_surfaces.num; i++)
+			gs_stagesurface_unmap(video->mapped_surfaces.array[i]->surf);
+		da_free(video->mapped_surfaces);
 
-		for (size_t i = 0; i < NUM_TEXTURES; i++) {
-			gs_stagesurface_destroy(video->copy_surfaces[i]);
-			gs_texture_destroy(video->render_textures[i]);
-			gs_texture_destroy(video->convert_textures[i]);
-			gs_texture_destroy(video->output_textures[i]);
-
-			video->copy_surfaces[i]    = NULL;
-			video->render_textures[i]  = NULL;
-			video->convert_textures[i] = NULL;
-			video->output_textures[i]  = NULL;
-		}
+		free_pipeline(&video->render_textures);
+		free_pipelines(&video->output_textures);
+		free_pipelines(&video->convert_textures);
+		free_pipelines(&video->copy_surfaces);
 
 		gs_leave_context();
 
-		circlebuf_free(&video->vframe_info_buffer);
+		for (size_t i = 0; i < video->vframe_info.num; i++) {
+			da_free(video->vframe_info.array[i]->data);
+			bfree(video->vframe_info.array[i]);
+		}
 
-		memset(&video->textures_rendered, 0,
-				sizeof(video->textures_rendered));
-		memset(&video->textures_output, 0,
-				sizeof(video->textures_output));
-		memset(&video->textures_copied, 0,
-				sizeof(video->textures_copied));
-		memset(&video->textures_converted, 0,
-				sizeof(video->textures_converted));
+		for (size_t i = 0; i < video->active_vframe_info.num; i++) {
+			da_free(video->active_vframe_info.array[i]->data);
+			bfree(video->active_vframe_info.array[i]);
+		}
+		
+		da_free(video->vframe_info);
+		da_free(video->active_vframe_info);
 
-		video->cur_texture = 0;
+		for (size_t i = 0; i < video->outputs.num; i++)
+			bfree(video->outputs.array[i]);
+
+		da_free(video->outputs);
+		da_free(video->active_outputs);
+		da_free(video->expired_outputs);
 	}
 }
 
@@ -750,6 +568,8 @@ static bool obs_init(const char *locale, const char *module_config_path,
 		return false;
 	if (pthread_mutex_init(&obs->video.video_thread_time_mutex, NULL) != 0)
 		return false;
+	if (pthread_mutex_init(&obs->video.resize_mutex, NULL) != 0)
+		return false;
 
 	if (module_config_path)
 		obs->module_config_path = bstrdup(module_config_path);
@@ -822,6 +642,7 @@ void obs_shutdown(void)
 	stop_video();
 	stop_hotkeys();
 
+	pthread_mutex_destroy(&obs->video.resize_mutex);
 	pthread_mutex_destroy(&obs->video.video_thread_time_mutex);
 	pthread_mutex_destroy(&obs->video.frame_tracker_mutex);
 
@@ -907,27 +728,23 @@ int obs_reset_video(struct obs_video_info *ovi)
 {
 	if (!obs) return OBS_VIDEO_FAIL;
 
-	/* don't allow changing of video settings if active. */
-	if (obs->video.video && video_output_active(obs->video.video))
-		return OBS_VIDEO_CURRENTLY_ACTIVE;
-
-	if (!size_valid(ovi->output_width, ovi->output_height) ||
-	    !size_valid(ovi->base_width,   ovi->base_height))
+	if (!size_valid(ovi->base_width, ovi->base_height))
 		return OBS_VIDEO_INVALID_PARAM;
 
 	struct obs_core_video *video = &obs->video;
 
-	stop_video();
-	obs_free_video();
-
 	if (!ovi) {
+		stop_video();
+		obs_free_video();
 		obs_free_graphics();
 		return OBS_VIDEO_SUCCESS;
 	}
 
-	/* align to multiple-of-two and SSE alignment sizes */
-	ovi->output_width  &= 0xFFFFFFFC;
-	ovi->output_height &= 0xFFFFFFFE;
+	const struct video_output_info *info = video_output_get_info(video->video);
+	if (info && (ovi->fps_den != info->fps_den || ovi->fps_num != info->fps_num)) {
+		stop_video();
+		obs_free_video();
+	}
 
 	if (!video->graphics) {
 		int errorcode = obs_init_graphics(ovi);
@@ -942,16 +759,17 @@ int obs_reset_video(struct obs_video_info *ovi)
 		return OBS_VIDEO_SUCCESS;
 	}
 
+	pthread_mutex_lock(&video->resize_mutex);
+	video->base_width = ovi->base_width;
+	video->base_height = ovi->base_height;
+	pthread_mutex_unlock(&video->resize_mutex);
+
 	blog(LOG_INFO, "---------------------------------");
 	blog(LOG_INFO, "video settings reset:\n"
 	               "\tbase resolution:   %dx%d\n"
-	               "\toutput resolution: %dx%d\n"
-	               "\tfps:               %d/%d\n"
-	               "\tformat:            %s",
+	               "\tfps:               %d/%d\n",
 	               ovi->base_width, ovi->base_height,
-	               ovi->output_width, ovi->output_height,
-	               ovi->fps_num, ovi->fps_den,
-		       get_video_format_name(ovi->output_format));
+	               ovi->fps_num, ovi->fps_den);
 
 	return obs_init_video(ovi);
 }
@@ -1003,13 +821,6 @@ bool obs_get_video_info(struct obs_video_info *ovi)
 	memset(ovi, 0, sizeof(struct obs_video_info));
 	ovi->base_width    = video->base_width;
 	ovi->base_height   = video->base_height;
-	ovi->gpu_conversion= video->gpu_conversion;
-	ovi->scale_type    = video->scale_type;
-	ovi->colorspace    = info->colorspace;
-	ovi->range         = info->range;
-	ovi->output_width  = info->width;
-	ovi->output_height = info->height;
-	ovi->output_format = info->format;
 	ovi->fps_num       = info->fps_num;
 	ovi->fps_den       = info->fps_den;
 

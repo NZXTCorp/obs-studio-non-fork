@@ -73,17 +73,10 @@ static inline bool valid_format(enum video_format format)
 
 static void nvenc_video_info(void *data, struct video_scale_info *info)
 {
-	struct nvenc_encoder *enc = data;
-	enum video_format pref_format;
+	UNUSED_PARAMETER(data);
 
-	pref_format = obs_encoder_get_preferred_video_format(enc->encoder);
-
-	if (!valid_format(pref_format)) {
-		pref_format = valid_format(info->format) ?
-			info->format : VIDEO_FORMAT_NV12;
-	}
-
-	info->format = pref_format;
+	if (!valid_format(info->format))
+		info->format = VIDEO_FORMAT_NV12;
 }
 
 static bool nvenc_init_codec(struct nvenc_encoder *enc)
@@ -137,12 +130,10 @@ static bool nvenc_update(void *data, obs_data_t *settings)
 
 	video_t *video = obs_encoder_video(enc->encoder);
 	const struct video_output_info *voi = video_output_get_info(video);
-	struct video_scale_info info;
 
-	info.format = voi->format;
-	info.colorspace = voi->colorspace;
-	info.range = voi->range;
-
+	struct video_scale_info info = {0};
+	if (!obs_encoder_get_video_conversion(enc->encoder, &info))
+		warn("nvenc_update: failed to get video conversion");
 	nvenc_video_info(enc, &info);
 
 	av_opt_set(enc->context->priv_data, "preset", preset, 0);

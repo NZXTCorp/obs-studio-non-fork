@@ -19,6 +19,8 @@
 
 #include "media-io-defs.h"
 
+#include "util/darray.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -66,27 +68,14 @@ enum video_range_type {
 	VIDEO_RANGE_FULL
 };
 
-struct video_data {
-	uint8_t           *data[MAX_AV_PLANES];
-	uint32_t          linesize[MAX_AV_PLANES];
-	uint64_t          timestamp;
-
-	video_tracked_frame_id tracked_id;
-};
-
 struct video_output_info {
 	const char        *name;
-
-	enum video_format format;
 	uint32_t          fps_num;
 	uint32_t          fps_den;
-	uint32_t          width;
-	uint32_t          height;
 	size_t            cache_size;
-
-	enum video_colorspace colorspace;
-	enum video_range_type range;
 };
+
+typedef void *video_locked_frame;
 
 static inline bool format_is_yuv(enum video_format format)
 {
@@ -142,6 +131,19 @@ struct video_scale_info {
 	uint32_t              height;
 	enum video_range_type range;
 	enum video_colorspace colorspace;
+	enum obs_scale_type   scale_type;
+	bool                  gpu_conversion;
+};
+typedef DARRAY(struct video_scale_info) video_scale_info_ts;
+
+struct video_data {
+	uint8_t           *data[MAX_AV_PLANES];
+	uint32_t          linesize[MAX_AV_PLANES];
+	uint64_t          timestamp;
+
+	struct video_scale_info info;
+
+	video_tracked_frame_id tracked_id;
 };
 
 EXPORT enum video_format video_format_from_fourcc(uint32_t fourcc);
@@ -169,20 +171,26 @@ EXPORT bool video_output_active(const video_t *video);
 
 EXPORT const struct video_output_info *video_output_get_info(
 		const video_t *video);
-EXPORT bool video_output_lock_frame(video_t *video, struct video_frame *frame,
+EXPORT video_locked_frame video_output_lock_frame(video_t *video,
+		size_t num_buffers_hint,
 		int count, uint64_t timestamp, video_tracked_frame_id tracked_id);
-EXPORT void video_output_unlock_frame(video_t *video);
+EXPORT bool video_output_get_frame_buffer(video_t *video,
+		struct video_frame *frame, struct video_scale_info *info, video_locked_frame locked, bool expiring);
+EXPORT void video_output_unlock_frame(video_t *video, video_locked_frame locked);
 EXPORT uint64_t video_output_get_frame_time(const video_t *video);
 EXPORT void video_output_stop(video_t *video);
 EXPORT bool video_output_stopped(video_t *video);
 
-EXPORT enum video_format video_output_get_format(const video_t *video);
-EXPORT uint32_t video_output_get_width(const video_t *video);
-EXPORT uint32_t video_output_get_height(const video_t *video);
+EXPORT enum video_format video_output_get_format(const video_t *video, void*);
+EXPORT uint32_t video_output_get_width(const video_t *video, void*);
+EXPORT uint32_t video_output_get_height(const video_t *video, void*);
 EXPORT double video_output_get_frame_rate(const video_t *video);
 
 EXPORT uint32_t video_output_get_skipped_frames(const video_t *video);
 EXPORT uint32_t video_output_get_total_frames(const video_t *video);
+
+EXPORT bool video_output_get_changes(video_t *video,
+		video_scale_info_ts *added, video_scale_info_ts *removed);
 
 
 #ifdef __cplusplus

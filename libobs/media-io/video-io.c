@@ -29,8 +29,12 @@
 
 extern profiler_name_store_t *obs_get_profiler_name_store(void);
 
-#define MAX_CONVERT_BUFFERS 3
 #define MAX_CACHE_SIZE 16
+
+struct cached_video_data {
+	struct video_data data;
+	bool expiring;
+};
 
 struct track_duplicated_frame {
 	int count;
@@ -38,16 +42,16 @@ struct track_duplicated_frame {
 };
 
 struct cached_frame_info {
-	struct video_data frame;
+	DARRAY(struct cached_video_data) frames;
+	uint32_t frames_written;
 	int count;
+	uint64_t timestamp;
+	video_tracked_frame_id tracked_id;
 	DARRAY(struct track_duplicated_frame) tracked_ids;
 };
 
 struct video_input {
-	struct video_scale_info   conversion;
-	video_scaler_t            *scaler;
-	struct video_frame        frame[MAX_CONVERT_BUFFERS];
-	int                       cur_frame;
+	DARRAY(struct video_scale_info) info;
 
 	void (*callback)(void *param, struct video_data *frame);
 	void *param;
@@ -55,9 +59,7 @@ struct video_input {
 
 static inline void video_input_free(struct video_input *input)
 {
-	for (size_t i = 0; i < MAX_CONVERT_BUFFERS; i++)
-		video_frame_free(&input->frame[i]);
-	video_scaler_destroy(input->scaler);
+	da_free(input->info);
 }
 
 struct video_output {
@@ -76,6 +78,13 @@ struct video_output {
 
 	pthread_mutex_t            input_mutex;
 	DARRAY(struct video_input) inputs;
+	video_scale_info_ts        maybe_expired_scale_info;
+
+	pthread_mutex_t            scale_info_mutex;
+	video_scale_info_ts        new_scale_info;
+	video_scale_info_ts        removed_scale_info;
+
+	DARRAY(struct video_conversion_info) infos;
 
 	size_t                     available_frames;
 	size_t                     first_added;
@@ -85,35 +94,16 @@ struct video_output {
 
 /* ------------------------------------------------------------------------- */
 
-static inline bool scale_video_output(struct video_input *input,
-		struct video_data *data)
+static struct cached_video_data *find_frame(struct cached_frame_info *cfi, struct video_scale_info *info)
 {
-	bool success = true;
-
-	if (input->scaler) {
-		struct video_frame *frame;
-
-		if (++input->cur_frame == MAX_CONVERT_BUFFERS)
-			input->cur_frame = 0;
-
-		frame = &input->frame[input->cur_frame];
-
-		success = video_scaler_scale(input->scaler,
-				frame->data, frame->linesize,
-				(const uint8_t * const*)data->data,
-				data->linesize);
-
-		if (success) {
-			for (size_t i = 0; i < MAX_AV_PLANES; i++) {
-				data->data[i]     = frame->data[i];
-				data->linesize[i] = frame->linesize[i];
-			}
-		} else {
-			blog(LOG_WARNING, "video-io: Could not scale frame!");
-		}
+	for (size_t i = 0; i < cfi->frames.num; i++) {
+		if (!info->gpu_conversion && !cfi->frames.array[i].data.info.gpu_conversion)
+			return cfi->frames.array + i;
+		if (memcmp(&cfi->frames.array[i].data.info, info, sizeof(*info)) == 0)
+			return cfi->frames.array + i;
 	}
 
-	return success;
+	return NULL;
 }
 
 static inline bool video_output_cur_frame(struct video_output *video)
@@ -143,15 +133,53 @@ static inline bool video_output_cur_frame(struct video_output *video)
 
 	for (size_t i = 0; i < video->inputs.num; i++) {
 		struct video_input *input = video->inputs.array+i;
-		struct video_data frame = frame_info->frame;
+
+		struct cached_video_data *frame = NULL;
+		for (size_t j = 0; j < input->info.num; j++) {
+			if (!(frame = find_frame(frame_info, input->info.array + j)))
+				continue;
+
+			if (!frame->expiring && input->info.num > 1 && ((input->info.num - j) > 1)) {
+				da_push_back_array(video->maybe_expired_scale_info, input->info.array + j + 1, input->info.num - j - 1);
+				da_resize(input->info, j + 1);
+			}
+			break;
+		}
+
+		if (!frame)
+			continue;
 
 		if (tracked_frame) {
-			frame.tracked_id = tracked_id;
+			frame->data.tracked_id = tracked_id;
 			blog(LOG_INFO, "video-io: Outputting (duplicated) tracked frame %lld", tracked_id);
 		}
 
-		if (scale_video_output(input, &frame))
-			input->callback(input->param, &frame);
+		input->callback(input->param, &frame->data);
+	}
+
+	for (size_t i = 0; i < video->maybe_expired_scale_info.num;) {
+		struct video_scale_info *info = video->maybe_expired_scale_info.array + i;
+
+		bool found = false;
+		for (size_t j = 0; j < video->inputs.num; j++) {
+			struct video_input *input = video->inputs.array + j;
+			if (da_find(input->info, info, 0) != DARRAY_INVALID) {
+				da_erase(video->maybe_expired_scale_info, i);
+				found = true;
+				break;
+			}
+		}
+		if (found)
+			continue;
+
+		i += 1;
+	}
+
+	if (video->maybe_expired_scale_info.num) {
+		pthread_mutex_lock(&video->scale_info_mutex);
+		da_push_back_da(video->removed_scale_info, video->maybe_expired_scale_info);
+		pthread_mutex_unlock(&video->scale_info_mutex);
+		da_resize(video->maybe_expired_scale_info, 0);
 	}
 
 	pthread_mutex_unlock(&video->input_mutex);
@@ -169,7 +197,6 @@ static inline bool video_output_cur_frame(struct video_output *video)
 		}
 	}
 
-	frame_info->frame.timestamp += video->frame_time;
 	complete = --frame_info->count == 0;
 
 	if (complete) {
@@ -180,7 +207,11 @@ static inline bool video_output_cur_frame(struct video_output *video)
 			video->last_added = video->first_added;
 
 	} else {
-		frame_info->frame.tracked_id = 0;
+		for (size_t i = 0; i < frame_info->frames.num; i++) {
+			struct cached_video_data *frame = frame_info->frames.array + i;
+			frame->data.timestamp += video->frame_time;
+			frame->data.tracked_id = 0;
+		}
 		++video->skipped_frames;
 	}
 
@@ -223,8 +254,7 @@ static void *video_thread(void *param)
 
 static inline bool valid_video_params(const struct video_output_info *info)
 {
-	return info->height != 0 && info->width != 0 && info->fps_den != 0 &&
-	       info->fps_num != 0;
+	return info->fps_den != 0 && info->fps_num != 0;
 }
 
 static inline void init_cache(struct video_output *video)
@@ -233,11 +263,7 @@ static inline void init_cache(struct video_output *video)
 		video->info.cache_size = MAX_CACHE_SIZE;
 
 	for (size_t i = 0; i < video->info.cache_size; i++) {
-		struct video_frame *frame;
-		frame = (struct video_frame*)&video->cache[i];
-
-		video_frame_init(frame, video->info.format,
-				video->info.width, video->info.height, false);
+		da_init(video->cache[i].frames);
 		da_init(video->cache[i].tracked_ids);
 	}
 
@@ -269,6 +295,8 @@ int video_output_open(video_t **video, struct video_output_info *info)
 		goto fail;
 	if (pthread_mutex_init(&out->input_mutex, &attr) != 0)
 		goto fail;
+	if (pthread_mutex_init(&out->scale_info_mutex, &attr) != 0)
+		goto fail;
 	if (os_sem_init(&out->update_semaphore, 0) != 0)
 		goto fail;
 	if (pthread_create(&out->thread, NULL, video_thread, out) != 0)
@@ -297,13 +325,17 @@ void video_output_close(video_t *video)
 	da_free(video->inputs);
 
 	for (size_t i = 0; i < video->info.cache_size; i++) {
-		video_frame_free((struct video_frame*)&video->cache[i]);
+		struct cached_frame_info *cfi = video->cache + i;
+		for (size_t j = 0; j < cfi->frames.num; j++)
+			video_frame_free((struct video_frame*)&cfi->frames.array[i].data);
+		da_free(video->cache[i].frames);
 		da_free(video->cache[i].tracked_ids);
 	}
 
 	os_sem_destroy(video->update_semaphore);
 	pthread_mutex_destroy(&video->data_mutex);
 	pthread_mutex_destroy(&video->input_mutex);
+	pthread_mutex_destroy(&video->scale_info_mutex);
 	bfree(video);
 }
 
@@ -323,6 +355,7 @@ static size_t video_get_input_idx(const video_t *video,
 static inline bool video_input_init(struct video_input *input,
 		struct video_output *video)
 {
+#if 0
 	if (input->conversion.width  != video->info.width ||
 	    input->conversion.height != video->info.height ||
 	    input->conversion.format != video->info.format) {
@@ -354,12 +387,13 @@ static inline bool video_input_init(struct video_input *input,
 					input->conversion.width,
 					input->conversion.height, true);
 	}
+#endif
 
 	return true;
 }
 
 bool video_output_connect(video_t *video,
-		const struct video_scale_info *conversion,
+		const struct video_scale_info *info,
 		void (*callback)(void *param, struct video_data *frame),
 		void *param)
 {
@@ -367,6 +401,11 @@ bool video_output_connect(video_t *video,
 
 	if (!video || !callback)
 		return false;
+
+	if (!info || !info->width || !info->height)
+		return false;
+
+	assert(info->gpu_conversion == true);
 
 	pthread_mutex_lock(&video->input_mutex);
 
@@ -381,23 +420,28 @@ bool video_output_connect(video_t *video,
 
 		input.callback = callback;
 		input.param    = param;
-
-		if (conversion) {
-			input.conversion = *conversion;
-		} else {
-			input.conversion.format    = video->info.format;
-			input.conversion.width     = video->info.width;
-			input.conversion.height    = video->info.height;
-		}
-
-		if (input.conversion.width == 0)
-			input.conversion.width = video->info.width;
-		if (input.conversion.height == 0)
-			input.conversion.height = video->info.height;
+		da_push_back(input.info, info);
 
 		success = video_input_init(&input, video);
-		if (success)
+		if (success) {
+			pthread_mutex_lock(&video->scale_info_mutex);
+
+			bool found = false;
+			for (size_t i = 0; i < video->inputs.num; i++) {
+				struct video_input *other = video->inputs.array + i;
+				if (da_find(other->info, info, 0) != DARRAY_INVALID) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+				da_push_back(video->new_scale_info, info);
+
+			pthread_mutex_unlock(&video->scale_info_mutex);
+
 			da_push_back(video->inputs, &input);
+		}
 	}
 
 	pthread_mutex_unlock(&video->input_mutex);
@@ -416,8 +460,33 @@ void video_output_disconnect(video_t *video,
 
 	size_t idx = video_get_input_idx(video, callback, param);
 	if (idx != DARRAY_INVALID) {
-		video_input_free(video->inputs.array+idx);
+		struct video_input input = video->inputs.array[idx];
 		da_erase(video->inputs, idx);
+
+		video_scale_info_ts removed = { 0 };
+		for (size_t j = 0; j < input.info.num; j++) {
+			bool found = false;
+			for (size_t i = 0; i < video->inputs.num; i++) {
+				if (da_find(video->inputs.array[i].info, &input.info.array[j], 0) == DARRAY_INVALID)
+					continue;
+
+				found = true;
+				break;
+			}
+
+			if (!found)
+				da_push_back(removed, &input.info.array[j]);
+		}
+		
+		if (removed.num) {
+			pthread_mutex_lock(&video->scale_info_mutex);
+			da_push_back_da(video->removed_scale_info, removed);
+			pthread_mutex_unlock(&video->scale_info_mutex);
+		}
+
+		da_free(removed);
+
+		video_input_free(&input);
 	}
 
 	pthread_mutex_unlock(&video->input_mutex);
@@ -434,19 +503,26 @@ const struct video_output_info *video_output_get_info(const video_t *video)
 	return video ? &video->info : NULL;
 }
 
-bool video_output_lock_frame(video_t *video, struct video_frame *frame,
+static void alloc_frame(struct video_data *data)
+{
+	struct video_frame *frame = (struct video_frame*)data;
+
+	video_frame_init(frame, data->info.format,
+		data->info.width, data->info.height, false);
+}
+
+video_locked_frame video_output_lock_frame(video_t *video,
+		size_t num_buffers_hint,
 		int count, uint64_t timestamp, video_tracked_frame_id tracked_id)
 {
-	struct cached_frame_info *cfi;
-	bool locked;
+	struct cached_frame_info *cfi = NULL;
 
-	if (!video) return false;
+	if (!video) return cfi;
 
 	pthread_mutex_lock(&video->data_mutex);
 
 	if (video->available_frames == 0) {
 		video->cache[video->last_added].count += count;
-		locked = false;
 
 		if (tracked_id) {
 			struct track_duplicated_frame track = {
@@ -464,25 +540,69 @@ bool video_output_lock_frame(video_t *video, struct video_frame *frame,
 		}
 
 		cfi = &video->cache[video->last_added];
-		cfi->frame.timestamp = timestamp;
 		cfi->count = count;
-		cfi->frame.tracked_id = tracked_id;
+		cfi->timestamp = timestamp;
+		cfi->tracked_id = tracked_id;
+		cfi->frames_written = 0;
+
+		da_reserve(cfi->frames, num_buffers_hint);
 
 		da_resize(cfi->tracked_ids, 0);
-
-		memcpy(frame, &cfi->frame, sizeof(*frame));
-
-		locked = true;
 	}
 
 	pthread_mutex_unlock(&video->data_mutex);
 
-	return locked;
+	return cfi;
 }
 
-void video_output_unlock_frame(video_t *video)
+bool video_output_get_frame_buffer(video_t *video,
+	struct video_frame *frame, struct video_scale_info *info, video_locked_frame locked, bool expiring)
 {
-	if (!video) return;
+	if (!locked || !info) return false;
+
+	struct cached_frame_info *cfi = locked;
+
+	struct cached_video_data *data = NULL;
+	for (size_t i = 0; i < cfi->frames.num; i++) {
+		if (memcmp(info, &cfi->frames.array[i].data.info, sizeof(*info)) != 0)
+			continue;
+
+		cfi->frames_written |= 1 << i;
+		data = cfi->frames.array + i;
+	}
+
+	if (!data) {
+		cfi->frames_written |= 1 << cfi->frames.num;
+		data = da_push_back_new(cfi->frames);
+		data->data.info = *info;
+		alloc_frame(&data->data);
+	}
+
+	data->data.timestamp = cfi->timestamp;
+	data->data.tracked_id = cfi->tracked_id;
+	data->expiring = expiring;
+
+	memcpy(frame, &data->data, sizeof(*frame));
+	return true;
+}
+
+void video_output_unlock_frame(video_t *video, video_locked_frame locked)
+{
+	if (!video || !locked) return;
+
+	struct cached_frame_info *cfi = locked;
+
+	for (size_t i = 0, frame_num = 0; i < cfi->frames.num; frame_num++) {
+		if (cfi->frames_written & (1 << frame_num)) {
+			i++;
+			continue;
+		}
+
+		struct cached_video_data *data = cfi->frames.array + i;
+		video_frame_free((struct video_frame*)&data->data);
+
+		da_erase(cfi->frames, i);
+	}
 
 	pthread_mutex_lock(&video->data_mutex);
 
@@ -520,21 +640,6 @@ bool video_output_stopped(video_t *video)
 	return video->stop;
 }
 
-enum video_format video_output_get_format(const video_t *video)
-{
-	return video ? video->info.format : VIDEO_FORMAT_NONE;
-}
-
-uint32_t video_output_get_width(const video_t *video)
-{
-	return video ? video->info.width : 0;
-}
-
-uint32_t video_output_get_height(const video_t *video)
-{
-	return video ? video->info.height : 0;
-}
-
 double video_output_get_frame_rate(const video_t *video)
 {
 	if (!video)
@@ -551,4 +656,25 @@ uint32_t video_output_get_skipped_frames(const video_t *video)
 uint32_t video_output_get_total_frames(const video_t *video)
 {
 	return video->total_frames;
+}
+
+bool video_output_get_changes(video_t *video,
+		video_scale_info_ts *added, video_scale_info_ts *removed)
+{
+	if (!video)
+		return false;
+
+	if (!added || !removed)
+		return false;
+
+	pthread_mutex_lock(&video->scale_info_mutex);
+
+	if (added)
+		da_move((*added), video->new_scale_info);
+	if (removed)
+		da_move((*removed), video->removed_scale_info);
+
+	pthread_mutex_unlock(&video->scale_info_mutex);
+
+	return true;
 }
