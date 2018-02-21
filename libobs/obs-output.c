@@ -222,6 +222,8 @@ bool obs_output_start(obs_output_t *output)
 		return false;
 	if (!output->context.data)
 		return false;
+	if (output->started)
+		return true;
 	if (!obs_output_get_ref(output))
 		return false;
 
