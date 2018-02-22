@@ -141,6 +141,8 @@ bool obs_source_init(struct obs_source *source,
 	if (pthread_mutex_init(&source->async_mutex, NULL) != 0)
 		return false;
 
+	calldata_init(&source->audio_signal_calldata);
+
 	if (info && info->output_flags & OBS_SOURCE_AUDIO) {
 		obs_source_audio_stream_t *stream = bzalloc(sizeof(*stream));
 		da_push_back(source->audio_streams, &stream);
@@ -408,6 +410,7 @@ void obs_source_destroy(struct obs_source *source)
 	da_free(source->async_cache);
 	da_free(source->async_frames);
 	da_free(source->filters);
+	calldata_free(&source->audio_signal_calldata);
 	pthread_mutex_destroy(&source->filter_mutex);
 	pthread_mutex_destroy(&source->audio_mutex);
 	pthread_mutex_destroy(&source->async_mutex);
@@ -907,17 +910,14 @@ static inline void handle_ts_jump(obs_source_t *source, uint64_t expected,
 static void source_signal_audio_data(obs_source_t *source,
 		struct audio_data *in, bool muted)
 {
-	struct calldata data;
+	struct calldata *data = &source->audio_signal_calldata;
 
-	calldata_init(&data);
+	calldata_clear(data);
+	calldata_set_ptr(data, "source", source);
+	calldata_set_ptr(data, "data",   in);
+	calldata_set_bool(data, "muted", muted);
 
-	calldata_set_ptr(&data, "source", source);
-	calldata_set_ptr(&data, "data",   in);
-	calldata_set_bool(&data, "muted", muted);
-
-	signal_handler_signal(source->context.signals, "audio_data", &data);
-
-	calldata_free(&data);
+	signal_handler_signal(source->context.signals, "audio_data", data);
 }
 
 static inline uint64_t uint64_diff(uint64_t ts1, uint64_t ts2)

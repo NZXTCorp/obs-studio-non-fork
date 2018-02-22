@@ -533,6 +533,7 @@ struct obs_source {
 	float                           present_volume;
 	int64_t                         sync_offset;
 	DARRAY(obs_source_audio_stream_t*) audio_streams;
+	calldata_t                      audio_signal_calldata;
 
 	/* async video data */
 	gs_texture_t                    *async_texture;
