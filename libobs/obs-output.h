@@ -45,7 +45,7 @@ struct obs_output_info {
 	bool (*start)(void *data);
 	void (*stop)(void *data);
 
-	void (*raw_video)(void *data, struct video_data *frame);
+	void (*raw_video)(void *data, struct video_data_container *container);
 	void (*raw_audio)(void *data, struct audio_data *frames);
 
 	void (*encoded_packet)(void *data, struct encoder_packet *packet);

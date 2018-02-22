@@ -635,10 +635,11 @@ static inline void copy_data(AVPicture *pic, const struct video_data *frame,
 	}
 }
 
-static void receive_video(void *param, struct video_data *frame)
+static void receive_video(void *param, struct video_data_container *container)
 {
 	struct ffmpeg_output *output = param;
 	struct ffmpeg_data   *data   = &output->ff_data;
+	struct video_data    *frame  = video_data_from_container(container);
 
 	// codec doesn't support video or none configured
 	if (!data->video)

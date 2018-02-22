@@ -146,6 +146,10 @@ struct video_data {
 	video_tracked_frame_id tracked_id;
 };
 
+struct video_data_container;
+
+typedef void (*video_data_callback)(void *param, struct video_data_container *container);
+
 EXPORT enum video_format video_format_from_fourcc(uint32_t fourcc);
 
 EXPORT bool video_format_get_parameters(enum video_colorspace color_space,
@@ -161,14 +165,14 @@ EXPORT void video_output_close(video_t *video);
 
 EXPORT bool video_output_connect(video_t *video,
 		const struct video_scale_info *conversion,
-		void (*callback)(void *param, struct video_data *frame),
+		video_data_callback callback,
 		void *param);
 EXPORT void video_output_disconnect(video_t *video,
-		void (*callback)(void *param, struct video_data *frame),
+		video_data_callback callback,
 		void *param);
 EXPORT bool video_output_update(video_t *video,
 		const struct video_scale_info *conversion,
-		void (*callback)(void *param, struct video_data *frame),
+		video_data_callback callback,
 		void *param);
 
 EXPORT bool video_output_active(const video_t *video);
@@ -196,6 +200,9 @@ EXPORT uint32_t video_output_get_total_frames(const video_t *video);
 EXPORT bool video_output_get_changes(video_t *video, video_scale_info_ts *added,
 		video_scale_info_ts *expiring, video_scale_info_ts *removed);
 
+EXPORT struct video_data *video_data_from_container(struct video_data_container *container);
+EXPORT void video_data_container_addref(struct video_data_container *container);
+EXPORT void video_data_container_release(struct video_data_container *container);
 
 #ifdef __cplusplus
 }

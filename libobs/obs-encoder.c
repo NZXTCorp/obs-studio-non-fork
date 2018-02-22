@@ -120,7 +120,7 @@ obs_encoder_t *obs_audio_encoder_create(const char *id, const char *name,
 			hotkey_data);
 }
 
-static void receive_video(void *param, struct video_data *frame);
+static void receive_video(void *param, struct video_data_container *container);
 static void receive_audio(void *param, size_t mix_idx, struct audio_data *data);
 
 static inline void get_audio_info(const struct obs_encoder *encoder,
@@ -765,11 +765,12 @@ end_profile:
 }
 
 static const char *receive_video_name = "receive_video";
-static void receive_video(void *param, struct video_data *frame)
+static void receive_video(void *param, struct video_data_container *container)
 {
 	profile_start(receive_video_name);
 
 	struct obs_encoder    *encoder  = param;
+	struct video_data     *frame    = video_data_from_container(container);
 	struct encoder_frame  enc_frame;
 
 	memset(&enc_frame, 0, sizeof(struct encoder_frame));

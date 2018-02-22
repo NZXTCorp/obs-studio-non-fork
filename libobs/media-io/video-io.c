@@ -31,8 +31,14 @@ extern profiler_name_store_t *obs_get_profiler_name_store(void);
 
 #define MAX_CACHE_SIZE 16
 
-struct cached_video_data {
+struct video_data_container {
+	volatile long refs;
+
 	struct video_data data;
+};
+
+struct cached_video_data {
+	struct video_data_container *container;
 	bool expiring;
 };
 
@@ -53,7 +59,7 @@ struct cached_frame_info {
 struct video_input {
 	DARRAY(struct video_scale_info) info;
 
-	void (*callback)(void *param, struct video_data *frame);
+	void (*callback)(void *param, struct video_data_container *container);
 	void *param;
 };
 
@@ -98,9 +104,9 @@ struct video_output {
 static struct cached_video_data *find_frame(struct cached_frame_info *cfi, struct video_scale_info *info)
 {
 	for (size_t i = 0; i < cfi->frames.num; i++) {
-		if (!info->gpu_conversion && !cfi->frames.array[i].data.info.gpu_conversion)
+		if (!info->gpu_conversion && !cfi->frames.array[i].container->data.info.gpu_conversion)
 			return cfi->frames.array + i;
-		if (memcmp(&cfi->frames.array[i].data.info, info, sizeof(*info)) == 0)
+		if (memcmp(&cfi->frames.array[i].container->data.info, info, sizeof(*info)) == 0)
 			return cfi->frames.array + i;
 	}
 
@@ -151,11 +157,11 @@ static inline bool video_output_cur_frame(struct video_output *video)
 			continue;
 
 		if (tracked_frame) {
-			frame->data.tracked_id = tracked_id;
+			frame->container->data.tracked_id = tracked_id;
 			blog(LOG_INFO, "video-io: Outputting (duplicated) tracked frame %lld", tracked_id);
 		}
 
-		input->callback(input->param, &frame->data);
+		input->callback(input->param, frame->container);
 	}
 
 	for (size_t i = 0; i < video->maybe_expired_scale_info.num;) {
@@ -210,8 +216,8 @@ static inline bool video_output_cur_frame(struct video_output *video)
 	} else {
 		for (size_t i = 0; i < frame_info->frames.num; i++) {
 			struct cached_video_data *frame = frame_info->frames.array + i;
-			frame->data.timestamp += video->frame_time;
-			frame->data.tracked_id = 0;
+			frame->container->data.timestamp += video->frame_time;
+			frame->container->data.tracked_id = 0;
 		}
 		++video->skipped_frames;
 	}
@@ -328,7 +334,7 @@ void video_output_close(video_t *video)
 	for (size_t i = 0; i < video->info.cache_size; i++) {
 		struct cached_frame_info *cfi = video->cache + i;
 		for (size_t j = 0; j < cfi->frames.num; j++)
-			video_frame_free((struct video_frame*)&cfi->frames.array[i].data);
+			video_data_container_release(cfi->frames.array[j].container);
 		da_free(video->cache[i].frames);
 		da_free(video->cache[i].tracked_ids);
 	}
@@ -341,7 +347,7 @@ void video_output_close(video_t *video)
 }
 
 static size_t video_get_input_idx(const video_t *video,
-		void (*callback)(void *param, struct video_data *frame),
+		video_data_callback callback,
 		void *param)
 {
 	for (size_t i = 0; i < video->inputs.num; i++) {
@@ -395,7 +401,7 @@ static inline bool video_input_init(struct video_input *input,
 
 bool video_output_connect(video_t *video,
 		const struct video_scale_info *info,
-		void (*callback)(void *param, struct video_data *frame),
+		video_data_callback callback,
 		void *param)
 {
 	bool success = false;
@@ -451,7 +457,7 @@ bool video_output_connect(video_t *video,
 }
 
 void video_output_disconnect(video_t *video,
-		void (*callback)(void *param, struct video_data *frame),
+		video_data_callback callback,
 		void *param)
 {
 	if (!video || !callback)
@@ -495,7 +501,7 @@ void video_output_disconnect(video_t *video,
 
 bool video_output_update(video_t *video,
 	const struct video_scale_info *info,
-	void (*callback)(void *param, struct video_data *frame),
+	video_data_callback callback,
 	void *param)
 {
 	bool success = false;
@@ -618,6 +624,16 @@ video_locked_frame video_output_lock_frame(video_t *video,
 	return cfi;
 }
 
+static struct video_data_container *get_container(video_t *video, struct video_scale_info *info)
+{
+	struct video_data_container *container = bzalloc(sizeof(*container));
+
+	container->data.info = *info;
+	alloc_frame(&container->data);
+
+	return container;
+}
+
 bool video_output_get_frame_buffer(video_t *video,
 	struct video_frame *frame, struct video_scale_info *info, video_locked_frame locked, bool expiring)
 {
@@ -627,25 +643,30 @@ bool video_output_get_frame_buffer(video_t *video,
 
 	struct cached_video_data *data = NULL;
 	for (size_t i = 0; i < cfi->frames.num; i++) {
-		if (memcmp(info, &cfi->frames.array[i].data.info, sizeof(*info)) != 0)
+		if (memcmp(info, &cfi->frames.array[i].container->data.info, sizeof(*info)) != 0)
 			continue;
 
 		cfi->frames_written |= 1 << i;
 		data = cfi->frames.array + i;
+		if (data->container->refs > 0) {
+			video_data_container_release(data->container);
+			data->container = NULL;
+		}
 	}
 
 	if (!data) {
 		cfi->frames_written |= 1 << cfi->frames.num;
 		data = da_push_back_new(cfi->frames);
-		data->data.info = *info;
-		alloc_frame(&data->data);
 	}
 
-	data->data.timestamp = cfi->timestamp;
-	data->data.tracked_id = cfi->tracked_id;
+	if (!data->container)
+		data->container = get_container(video, info);
+
+	data->container->data.timestamp = cfi->timestamp;
+	data->container->data.tracked_id = cfi->tracked_id;
 	data->expiring = expiring;
 
-	memcpy(frame, &data->data, sizeof(*frame));
+	memcpy(frame, &data->container->data, sizeof(*frame));
 	return true;
 }
 
@@ -661,9 +682,7 @@ void video_output_unlock_frame(video_t *video, video_locked_frame locked)
 			continue;
 		}
 
-		struct cached_video_data *data = cfi->frames.array + i;
-		video_frame_free((struct video_frame*)&data->data);
-
+		video_data_container_release(cfi->frames.array[i].container);
 		da_erase(cfi->frames, i);
 	}
 
@@ -745,4 +764,29 @@ bool video_output_get_changes(video_t *video, video_scale_info_ts *added,
 		da_erase_item((*expiring), added->array + i);
 
 	return true;
+}
+
+/* ------------------------------------------------------------------------- */
+
+struct video_data *video_data_from_container(struct video_data_container *container)
+{
+	return container ? &container->data : NULL;
+}
+
+void video_data_container_addref(struct video_data_container *container)
+{
+	if (container)
+		os_atomic_inc_long(&container->refs);
+}
+
+void video_data_container_release(struct video_data_container *container)
+{
+	if (!container)
+		return;
+
+	if (os_atomic_dec_long(&container->refs) != -1)
+		return;
+
+	video_frame_free((struct video_frame*)&container->data);
+	bfree(container);
 }

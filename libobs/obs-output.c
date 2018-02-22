@@ -1231,11 +1231,11 @@ static void default_encoded_callback(void *param, struct encoder_packet *packet)
 		output->total_frames++;
 }
 
-static void default_raw_video_callback(void *param, struct video_data *frame)
+static void default_raw_video_callback(void *param, struct video_data_container *container)
 {
 	struct obs_output *output = param;
 	if (output->started)
-		output->info.raw_video(output->context.data, frame);
+		output->info.raw_video(output->context.data, container);
 	output->total_frames++;
 }
 
