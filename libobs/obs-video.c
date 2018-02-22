@@ -915,6 +915,17 @@ static struct obs_vframe_info *get_vframe_info()
 	return bzalloc(sizeof(*info));
 }
 
+static bool sleepto_imprecise(uint64_t target)
+{
+	uint64_t actual_time = os_gettime_ns();
+	if (actual_time > target)
+		return false;
+
+	uint32_t sleep_time_ms = (uint32_t)((target - actual_time) / (1000 * 1000));
+	os_sleep_ms(sleep_time_ms);
+	return true;
+}
+
 static inline void video_sleep(struct obs_core_video *video,
 		uint64_t *p_time, uint64_t interval_ns, struct obs_vframe_info **vframe_info)
 {
@@ -930,7 +941,10 @@ static inline void video_sleep(struct obs_core_video *video,
 	if (info->uses)
 		*vframe_info = get_vframe_info();
 
-	if (os_sleepto_ns(t)) {
+	bool precise_sleep = video->active_outputs.num > 0;
+	bool did_sleep = precise_sleep ? os_sleepto_ns(t) : sleepto_imprecise(t);
+
+	if (did_sleep) {
 		*p_time = t;
 		count = 1;
 	} else {
