@@ -1077,6 +1077,7 @@ static bool diff_entry(profiler_snapshot_entry_t *entry,
 			&entry->max_time_between_calls) || changed;
 
 	entry->overall_count -= o_ent->overall_count;
+	entry->overall_between_calls_count -= o_ent->overall_between_calls_count;
 
 	return changed;
 }
