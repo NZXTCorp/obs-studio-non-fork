@@ -44,7 +44,7 @@ static void update_settings(struct window_capture *wc, obs_data_t *s)
 
 	build_window_strings(window, &wc->class, &wc->title, &wc->executable);
 
-	wc->process_id = obs_data_get_int(s, "process_id");
+	wc->process_id = (DWORD)obs_data_get_int(s, "process_id");
 
 	wc->priority      = (enum window_priority)priority;
 	wc->cursor        = obs_data_get_bool(s, "cursor");
