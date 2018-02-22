@@ -1035,8 +1035,8 @@ static bool diff_times(profiler_time_entries_t *e_times,
 	}
 
 	if (e_times->num) {
-		*min = e_times->array[0].time_delta;
-		*max = e_times->array[e_times->num - 1].time_delta;
+		*min = e_times->array[e_times->num - 1].time_delta;
+		*max = e_times->array[0].time_delta;
 	} else {
 		*min = 0;
 		*max = 0;
