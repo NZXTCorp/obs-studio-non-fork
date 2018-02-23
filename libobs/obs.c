@@ -239,6 +239,7 @@ static void obs_free_video(void)
 
 		da_free(video->outputs);
 		da_free(video->active_outputs);
+		da_free(video->expiring_outputs);
 		da_free(video->expired_outputs);
 	}
 }

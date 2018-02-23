@@ -288,6 +288,7 @@ typedef struct obs_texture_pipeline obs_texture_pipeline_t;
 typedef DARRAY(obs_texture_pipeline_t) obs_texture_pipelines_t;
 
 struct obs_video_output {
+	bool                expiring;
 	bool                expired;
 
 	uint32_t            conversion_height;
@@ -317,6 +318,7 @@ struct obs_core_video {
 
 	obs_video_outputs_t             outputs;
 	obs_video_outputs_t             active_outputs;
+	obs_video_outputs_t             expiring_outputs;
 	obs_video_outputs_t             expired_outputs;
 
 	gs_effect_t                     *default_effect;

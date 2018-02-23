@@ -27,6 +27,7 @@ extern "C" {
 #define OBS_OUTPUT_ENCODED     (1<<2)
 #define OBS_OUTPUT_SERVICE     (1<<3)
 #define OBS_OUTPUT_MULTI_TRACK (1<<4)
+#define OBS_OUTPUT_RESIZABLE   (1<<5)
 
 struct encoder_packet;
 

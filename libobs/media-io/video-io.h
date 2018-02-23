@@ -166,6 +166,10 @@ EXPORT bool video_output_connect(video_t *video,
 EXPORT void video_output_disconnect(video_t *video,
 		void (*callback)(void *param, struct video_data *frame),
 		void *param);
+EXPORT bool video_output_update(video_t *video,
+		const struct video_scale_info *conversion,
+		void (*callback)(void *param, struct video_data *frame),
+		void *param);
 
 EXPORT bool video_output_active(const video_t *video);
 
@@ -189,8 +193,8 @@ EXPORT double video_output_get_frame_rate(const video_t *video);
 EXPORT uint32_t video_output_get_skipped_frames(const video_t *video);
 EXPORT uint32_t video_output_get_total_frames(const video_t *video);
 
-EXPORT bool video_output_get_changes(video_t *video,
-		video_scale_info_ts *added, video_scale_info_ts *removed);
+EXPORT bool video_output_get_changes(video_t *video, video_scale_info_ts *added,
+		video_scale_info_ts *expiring, video_scale_info_ts *removed);
 
 
 #ifdef __cplusplus

@@ -1336,6 +1336,14 @@ void obs_output_set_video_conversion(obs_output_t *output,
 
 	output->video_conversion = *conversion;
 	output->video_conversion_set = true;
+
+	if (!output->started || output->info.flags & OBS_OUTPUT_ENCODED)
+		return;
+
+	if (output->info.flags & OBS_OUTPUT_RESIZABLE)
+		video_output_update(obs_output_video(output),
+			get_video_conversion(output),
+			default_raw_video_callback, output);
 }
 
 static inline void signal_start(struct obs_output *output)

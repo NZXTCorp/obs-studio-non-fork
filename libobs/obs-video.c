@@ -870,7 +870,7 @@ static inline void output_video_data(video_t *video,
 		struct video_frame output_frame;
 		for (size_t i = 0; i < info->data.num; i++) {
 			obs_video_output_t *output = info->data.array[i].output;
-			if (!video_output_get_frame_buffer(video, &output_frame, &output->info, locked, output->expired)) {
+			if (!video_output_get_frame_buffer(video, &output_frame, &output->info, locked, output->expiring || output->expired)) {
 				blog(LOG_ERROR, "Failed to get frame buffer for output");
 				continue;
 			}
@@ -1162,8 +1162,8 @@ static void update_outputs()
 		bfree(output);
 	}
 
-	video_scale_info_ts added = { 0 }, removed = { 0 };
-	if (!video_output_get_changes(video->video, &added, &removed))
+	video_scale_info_ts added = { 0 }, expiring = { 0 }, removed = { 0 };
+	if (!video_output_get_changes(video->video, &added, &expiring, &removed))
 		return;
 
 	for (size_t i = 0; i < removed.num; i++) {
@@ -1175,6 +1175,29 @@ static void update_outputs()
 			da_erase_item(video->active_outputs, &output);
 			da_push_back(video->expired_outputs, &output);
 			output->expired = true;
+			break;
+		}
+		for (size_t j = 0; j < video->expiring_outputs.num; j++) {
+			obs_video_output_t *output = video->expiring_outputs.array[j];
+			if (memcmp(&output->info, removed.array + i, sizeof(output->info)) != 0)
+				continue;
+
+			da_erase_item(video->expiring_outputs, &output);
+			da_push_back(video->expired_outputs, &output);
+			output->expired = true;
+			break;
+		}
+	}
+
+	for (size_t i = 0; i < expiring.num; i++) {
+		for (size_t j = 0; j < video->active_outputs.num; j++) {
+			obs_video_output_t *output = video->active_outputs.array[j];
+			if (memcmp(&output->info, expiring.array + i, sizeof(output->info)) != 0)
+				continue;
+
+			da_erase_item(video->active_outputs, &output);
+			da_push_back(video->expiring_outputs, &output);
+			output->expiring = true;
 			break;
 		}
 	}
@@ -1191,6 +1214,7 @@ static void update_outputs()
 	}
 
 	da_free(added);
+	da_free(expiring);
 	da_free(removed);
 }
 

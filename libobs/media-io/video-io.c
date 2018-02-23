@@ -82,6 +82,7 @@ struct video_output {
 
 	pthread_mutex_t            scale_info_mutex;
 	video_scale_info_ts        new_scale_info;
+	video_scale_info_ts        expiring_scale_info;
 	video_scale_info_ts        removed_scale_info;
 
 	DARRAY(struct video_conversion_info) infos;
@@ -492,6 +493,68 @@ void video_output_disconnect(video_t *video,
 	pthread_mutex_unlock(&video->input_mutex);
 }
 
+bool video_output_update(video_t *video,
+	const struct video_scale_info *info,
+	void (*callback)(void *param, struct video_data *frame),
+	void *param)
+{
+	bool success = false;
+
+	if (!video || !callback)
+		return false;
+
+	if (!info || !info->width || !info->height)
+		return false;
+
+	assert(info->gpu_conversion == true);
+
+	pthread_mutex_lock(&video->input_mutex);
+
+	size_t idx = video_get_input_idx(video, callback, param);
+	if (idx != DARRAY_INVALID) {
+		struct video_input *input = &video->inputs.array[idx];
+		struct video_scale_info *old = &input->info.array[0];
+
+		size_t info_idx = da_find(input->info, info, 0);
+		if (info_idx == DARRAY_INVALID)
+			da_insert(input->info, 0, info);
+		else if (info_idx > 0)
+			da_move_item(input->info, info_idx, 0);
+
+		if (info_idx != 0) {
+			bool found_new = false;
+			bool found_old = false;
+			for (size_t i = 0; i < video->inputs.num; i++) {
+				if (i == idx)
+					continue;
+
+				struct video_input *other = video->inputs.array + i;
+				if (!found_new && memcmp(other->info.array, info, sizeof(*info)) == 0)
+					found_new = true;
+				if (!found_old && memcmp(other->info.array, old, sizeof(*info)) == 0)
+					found_old = true;
+				if (found_new && found_old)
+					break;
+			}
+
+			if (!found_new || !found_old) {
+				pthread_mutex_lock(&video->scale_info_mutex);
+				if (!found_new)
+					da_push_back(video->new_scale_info, info);
+				if (!found_old)
+					da_push_back(video->expiring_scale_info, old);
+				pthread_mutex_unlock(&video->scale_info_mutex);
+			}
+		}
+
+		success = true;
+	}
+
+	pthread_mutex_unlock(&video->input_mutex);
+
+	return success;
+}
+
 bool video_output_active(const video_t *video)
 {
 	if (!video) return false;
@@ -658,8 +721,8 @@ uint32_t video_output_get_total_frames(const video_t *video)
 	return video->total_frames;
 }
 
-bool video_output_get_changes(video_t *video,
-		video_scale_info_ts *added, video_scale_info_ts *removed)
+bool video_output_get_changes(video_t *video, video_scale_info_ts *added,
+		video_scale_info_ts *expiring, video_scale_info_ts *removed)
 {
 	if (!video)
 		return false;
@@ -671,10 +734,15 @@ bool video_output_get_changes(video_t *video,
 
 	if (added)
 		da_move((*added), video->new_scale_info);
+	if (expiring)
+		da_move((*expiring), video->expiring_scale_info);
 	if (removed)
 		da_move((*removed), video->removed_scale_info);
 
 	pthread_mutex_unlock(&video->scale_info_mutex);
+
+	for (size_t i = 0; i < added->num; i++)
+		da_erase_item((*expiring), added->array + i);
 
 	return true;
 }
