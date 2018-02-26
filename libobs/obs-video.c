@@ -1268,6 +1268,16 @@ static void update_render_size(void)
 
 #define NBSP "\xC2\xA0"
 
+static const char *update_profiler_entry(bool active, uint64_t interval)
+{
+	const char *video_thread_name =
+		profile_store_name(obs_get_profiler_name_store(),
+			"obs_video_thread(%g"NBSP"ms%s)", interval / 1000000., active ? "" : " idle");
+	profile_register_root(video_thread_name, interval);
+
+	return video_thread_name;
+}
+
 static const char *tick_sources_name = "tick_sources";
 static const char *gs_context_name = "gs_context(video->graphics)";
 static const char *render_displays_name = "render_displays";
@@ -1283,10 +1293,9 @@ void *obs_video_thread(void *param)
 
 	os_set_thread_name("libobs: graphics thread");
 
-	const char *video_thread_name =
-		profile_store_name(obs_get_profiler_name_store(),
-			"obs_video_thread(%g"NBSP"ms)", interval / 1000000.);
-	profile_register_root(video_thread_name, interval);
+	bool outputs_were_active = obs->video.outputs.num > 0;
+
+	const char *video_thread_name = update_profiler_entry(outputs_were_active, interval);
 
 	struct obs_vframe_info *vframe_info = get_vframe_info();
 
@@ -1324,6 +1333,12 @@ void *obs_video_thread(void *param)
 		profile_reenable_thread();
 
 		update_outputs();
+
+		bool outputs_active = obs->video.outputs.num > 0;
+		if (outputs_active != outputs_were_active) {
+			video_thread_name = update_profiler_entry(outputs_active, interval);
+			outputs_were_active = outputs_active;
+		}
 
 		update_render_size();
 
