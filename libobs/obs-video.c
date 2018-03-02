@@ -1003,9 +1003,11 @@ static inline void output_frame()
 	if (info->uses)
 		return;
 
-	profile_start(output_frame_output_video_data_name);
-	output_video_data(video->video, info);
-	profile_end(output_frame_output_video_data_name);
+	if (info->data.num) {
+		profile_start(output_frame_output_video_data_name);
+		output_video_data(video->video, info);
+		profile_end(output_frame_output_video_data_name);
+	}
 
 	da_push_back(video->vframe_info, video->active_vframe_info.array);
 	da_erase(video->active_vframe_info, 0);
