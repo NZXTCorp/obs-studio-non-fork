@@ -267,8 +267,10 @@ static inline bool d3d9_shtex_init_shtex()
 
 static bool d3d9_create_shared_tex(UINT width, UINT height, D3DFORMAT format, IDirect3DTexture9 **tex, HANDLE *shared_handle)
 {
-	if (!global_hook_info || !data.device)
+	if (!global_hook_info || !data.device) {
+		hlog("d3d9_create_shared_tex: global_hook_info (%p) or data.device (%p) is NULL");
 		return false;
+	}
 
 	struct d3d9_offsets offsets = global_hook_info->offsets.d3d9;
 	uint8_t *patch_addr = nullptr;
@@ -285,8 +287,10 @@ static bool d3d9_create_shared_tex(UINT width, UINT height, D3DFORMAT format, ID
 			*(uint8_t**)(device_ptr + offsets.d3d9_clsoff);
 		p_is_d3d9 = (BOOL*)(d3d9_ptr + offsets.is_d3d9ex_clsoff);
 	} else {
-		if (data.patch != -1 && !data.d3d9)
+		if (data.patch != -1 && !data.d3d9) {
+			hlog("d3d9_create_shared_tex: data.d3d9 (%p) is NULL", data.d3d9);
 			return false;
+		}
 
 		patch_addr = get_d3d9_patch_addr(data.d3d9, data.patch);
 	}
