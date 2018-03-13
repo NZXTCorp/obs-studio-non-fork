@@ -1287,6 +1287,7 @@ static const char *render_frame_name = "render_frame";
 static const char *output_frame_name = "output_frame";
 static const char *deferred_cleanup_name = "deferred_cleanup";
 static const char *update_render_size_name = "update_render_size";
+static const char *update_outputs_name = "update_outputs";
 void *obs_video_thread(void *param)
 {
 	uint64_t last_time = 0;
@@ -1335,17 +1336,19 @@ void *obs_video_thread(void *param)
 		output_frame();
 		profile_end(output_frame_name);
 
-		profile_end(video_thread_name);
-
-		profile_reenable_thread();
-
+		profile_start(update_outputs_name);
 		update_outputs();
+		profile_end(update_outputs_name);
+
+		profile_end(video_thread_name);
 
 		bool outputs_active = obs->video.outputs.num > 0;
 		if (outputs_active != outputs_were_active) {
 			video_thread_name = update_profiler_entry(outputs_active, interval);
 			outputs_were_active = outputs_active;
 		}
+
+		profile_reenable_thread();
 
 		video_sleep(&obs->video, &obs->video.video_time, interval, &vframe_info);
 	}
