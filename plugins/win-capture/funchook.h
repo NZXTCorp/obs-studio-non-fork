@@ -52,4 +52,10 @@ static inline void force_rehook(struct func_hook *hook)
 
 #ifdef __cplusplus
 }
+
+struct release_module {
+	HMODULE module = nullptr;
+	release_module(HMODULE module) : module(module) {}
+	~release_module() { if (module) FreeLibrary(module); }
+};
 #endif

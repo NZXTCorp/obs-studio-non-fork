@@ -149,6 +149,18 @@ static inline const char *get_process_name(void)
 	return process_name;
 }
 
+static inline HMODULE get_locked_system_module(const char *module)
+{
+	char base_path[MAX_PATH];
+
+	strcpy(base_path, system_path);
+	strcat(base_path, "\\");
+	strcat(base_path, module);
+
+	HMODULE handle;
+	return GetModuleHandleExA(0, base_path, &handle) ? handle : NULL;
+}
+
 static inline HMODULE get_system_module(const char *module)
 {
 	char base_path[MAX_PATH];

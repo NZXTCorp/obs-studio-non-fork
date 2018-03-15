@@ -911,6 +911,7 @@ static bool gl_register_window(void)
 	return true;
 }
 
+static HMODULE hooked_gl_module = NULL;
 bool hook_gl(void)
 {
 	static bool hooked = false;
@@ -919,17 +920,17 @@ bool hook_gl(void)
 	void *wgl_slb_proc;
 	void *wgl_sb_proc;
 
-	gl = get_system_module("opengl32.dll");
+	gl = get_locked_system_module("opengl32.dll");
 	if (!gl) {
 		return false;
 	}
 
 	if (!gl_register_window()) {
-		return false;
+		goto cleanup;
 	}
 
 	if (hooked)
-		return true;
+		goto cleanup;
 
 	hooked = true;
 
@@ -959,8 +960,13 @@ bool hook_gl(void)
 
 	rehook(&swap_buffers);
 
+	hooked_gl_module = gl;
+
 	hlog("Hooked OpenGL");
-	return true;
+
+cleanup:
+	FreeLibrary(gl);
+	return hooked;
 }
 
 bool check_gl(void)
@@ -968,7 +974,35 @@ bool check_gl(void)
 	if (gl_swap_begin_called)
 		return true;
 
-	return check_hook(&wgl_delete_context) ||
+	if (!hooked_gl_module)
+		return true;
+
+	HMODULE gl_module = get_locked_system_module("opengl32.dll");
+	if (!gl_module) {
+		static bool gl_unload_logged = false;
+		if (!gl_unload_logged) {
+			hlog("opengl32.dll unloaded after it was hooked");
+			gl_unload_logged = true;
+		}
+		return true;
+	}
+
+	bool hooks_ok = true;
+
+	if (gl_module != hooked_gl_module) {
+		static bool gl_base_moved_logged = false;
+		if (!gl_base_moved_logged) {
+			hlog("opengl32.dll reloaded after it was hooked");
+			gl_base_moved_logged = true;
+		}
+		goto cleanup;
+	}
+
+	hooks_ok = check_hook(&wgl_delete_context) ||
 		check_hook(&wgl_swap_layer_buffers) ||
 		check_hook(&wgl_swap_buffers);
+
+cleanup:
+	FreeLibrary(gl_module);
+	return hooks_ok;
 }

@@ -385,11 +385,16 @@ static uint8_t pixel_shader_data[1024];
 static size_t vertex_shader_size = 0;
 static size_t pixel_shader_size = 0;
 
+static HMODULE hooked_dxgi_module = nullptr;
+
+namespace {
+}
+
 bool hook_dxgi(void)
 {
 	pD3DCompile compile;
 	ID3D10Blob *blob;
-	HMODULE dxgi_module = get_system_module("dxgi.dll");
+	HMODULE dxgi_module = get_locked_system_module("dxgi.dll");
 	HRESULT hr;
 	void *present_addr;
 	void *resize_addr;
@@ -398,6 +403,8 @@ bool hook_dxgi(void)
 	if (!dxgi_module) {
 		return false;
 	}
+
+	release_module module_releaser{ dxgi_module };
 
 	compile = get_compiler();
 	if (!compile) {
@@ -466,6 +473,8 @@ bool hook_dxgi(void)
 	if (present1_addr)
 		rehook(&present1);
 
+	hooked_dxgi_module = dxgi_module;
+
 	hlog("Hooked DXGI");
 	return true;
 }
@@ -486,6 +495,30 @@ bool check_dxgi()
 {
 	if (hook_present_called)
 		return true;
+
+	if (!hooked_dxgi_module)
+		return true;
+
+	HMODULE dxgi_module = get_locked_system_module("dxgi.dll");
+	if (!dxgi_module) {
+		static bool dxgi_unload_logged = false;
+		if (!dxgi_unload_logged) {
+			hlog("dxgi.dll unloaded after it was hooked");
+			dxgi_unload_logged = true;
+		}
+		return true;
+	}
+
+	release_module module_releaser{ dxgi_module };
+
+	if (dxgi_module != hooked_dxgi_module) {
+		static bool dxgi_base_moved_logged = false;
+		if (!dxgi_base_moved_logged) {
+			hlog("dxgi.dll reloaded after it was hooked");
+			dxgi_base_moved_logged = true;
+		}
+		return true;
+	}
 
 	return check_hook(&present) && check_hook(&resize_buffers);
 }

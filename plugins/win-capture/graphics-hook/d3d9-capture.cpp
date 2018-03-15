@@ -1040,10 +1040,11 @@ static void log_d3d9_module_path(HMODULE loaded_d3d9_module)
 	hlog("log_d3d9_module_path: %ls", module_path);
 }
 
+static HMODULE hooked_d3d9_module = nullptr;
 static bool d3d9_module_mismatch_logged = false;
 bool hook_d3d9(void)
 {
-	HMODULE d3d9_module = get_system_module("d3d9.dll");
+	HMODULE d3d9_module = get_locked_system_module("d3d9.dll");
 	uint32_t d3d9_size;
 	void *present_addr = nullptr;
 	void *present_ex_addr = nullptr;
@@ -1058,6 +1059,8 @@ bool hook_d3d9(void)
 		}
 		return false;
 	}
+
+	release_module module_releaser{ d3d9_module };
 
 	d3d9_size = module_size(d3d9_module);
 
@@ -1122,6 +1125,7 @@ bool hook_d3d9(void)
 		rehook(&present);
 	}
 
+	hooked_d3d9_module = d3d9_module;
 	hlog("Hooked D3D9");
 	return true;
 }
@@ -1130,6 +1134,30 @@ bool check_d3d9()
 {
 	if (present_begin_called)
 		return true;
+
+	if (!hooked_d3d9_module)
+		return true;
+
+	HMODULE d3d9_module = get_locked_system_module("d3d9.dll");
+	if (!d3d9_module) {
+		static bool d3d9_unload_logged = false;
+		if (!d3d9_unload_logged) {
+			hlog("d3d9.dll unloaded after it was hooked");
+			d3d9_unload_logged = true;
+		}
+		return true;
+	}
+
+	release_module module_releaser{ d3d9_module };
+
+	if (d3d9_module != hooked_d3d9_module) {
+		static bool d3d9_base_moved_logged = false;
+		if (!d3d9_base_moved_logged) {
+			hlog("d3d9.dll reloaded after it was hooked");
+			d3d9_base_moved_logged = true;
+		}
+		return true;
+	}
 
 	return check_hook(&present_swap) ||
 		check_hook(&present_ex) ||

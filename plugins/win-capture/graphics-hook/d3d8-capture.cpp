@@ -351,13 +351,15 @@ static bool manually_get_d3d8_present_addr(HMODULE d3d8_module,
 
 bool hook_d3d8(void)
 {
-	HMODULE d3d8_module = get_system_module("d3d8.dll");
+	HMODULE d3d8_module = get_locked_system_module("d3d8.dll");
 	uint32_t d3d8_size;
 	void *present_addr = nullptr;
 
 	if (!d3d8_module) {
 		return false;
 	}
+
+	release_module module_releaser{ d3d8_module };
 
 	d3d8_size = module_size(d3d8_module);
 
