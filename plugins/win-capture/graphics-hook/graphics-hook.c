@@ -550,7 +550,7 @@ static inline bool attempt_hook(void)
 
 	if (!modules_logged &&
 		(d3d9_broken || dxgi_broken || gl_broken)) {
-		hlog("attempt_hook: some hooks appear to be broken (d3d9: %d, dxgi: %d, gl: %d",
+		hlog("attempt_hook: some hooks appear to be broken (d3d9: %d, dxgi: %d, gl: %d)",
 			d3d9_broken, dxgi_broken, gl_broken);
 		list_process_modules();
 		modules_logged = true;
