@@ -1281,7 +1281,8 @@ static const char *update_profiler_entry(bool active, uint64_t interval)
 }
 
 static const char *tick_sources_name = "tick_sources";
-static const char *gs_context_name = "gs_context(video->graphics)";
+static const char *gs_enter_context_name = "gs_enter_context";
+static const char *gs_context_name = "gs_context";
 static const char *render_displays_name = "render_displays";
 static const char *render_frame_name = "render_frame";
 static const char *output_frame_name = "output_frame";
@@ -1310,8 +1311,11 @@ void *obs_video_thread(void *param)
 		last_time = tick_sources(obs->video.video_time, last_time);
 		profile_end(tick_sources_name);
 
-		profile_start(gs_context_name);
+		profile_start(gs_enter_context_name);
 		gs_enter_context(obs->video.graphics);
+		profile_end(gs_enter_context_name);
+
+		profile_start(gs_context_name);
 
 		profile_start(render_displays_name);
 		render_displays();
