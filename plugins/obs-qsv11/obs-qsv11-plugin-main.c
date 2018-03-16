@@ -54,6 +54,8 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 #include <obs-module.h>
+#include <windows.h>
+#include <VersionHelpers.h>
 #include "mfxsession.h"
 
 OBS_DECLARE_MODULE()
@@ -70,7 +72,7 @@ bool obs_module_load(void)
 
 	sts = MFXInit(impl, &ver, &session);
 
-	if (sts == MFX_ERR_NONE) {
+	if (sts == MFX_ERR_NONE && IsWindows8OrGreater()) {
 		blog(LOG_INFO, "QSV supported (via D3D11)");
 		obs_register_encoder(&obs_qsv_encoder);
 		MFXClose(session);
