@@ -1286,6 +1286,7 @@ static const char *render_displays_name = "render_displays";
 static const char *render_frame_name = "render_frame";
 static const char *output_frame_name = "output_frame";
 static const char *deferred_cleanup_name = "deferred_cleanup";
+static const char *update_render_size_name = "update_render_size";
 void *obs_video_thread(void *param)
 {
 	uint64_t last_time = 0;
@@ -1323,6 +1324,10 @@ void *obs_video_thread(void *param)
 		obs_free_deferred_gs_data();
 		profile_end(deferred_cleanup_name);
 
+		profile_start(update_render_size_name);
+		update_render_size();
+		profile_end(update_render_size_name);
+
 		gs_leave_context();
 		profile_end(gs_context_name);
 
@@ -1341,8 +1346,6 @@ void *obs_video_thread(void *param)
 			video_thread_name = update_profiler_entry(outputs_active, interval);
 			outputs_were_active = outputs_active;
 		}
-
-		update_render_size();
 
 		video_sleep(&obs->video, &obs->video.video_time, interval, &vframe_info);
 	}
