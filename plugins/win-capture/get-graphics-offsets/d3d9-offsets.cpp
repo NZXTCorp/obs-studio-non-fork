@@ -45,6 +45,7 @@ static inline bool d3d9_init(d3d9_info &info)
 
 	hr = create(D3D_SDK_VERSION, &info.d3d9ex);
 	if (FAILED(hr)) {
+		Log("Direct3DCreate9Ex(%d) failed: %#x", D3D_SDK_VERSION, hr);
 		return false;
 	}
 
@@ -65,6 +66,7 @@ static inline bool d3d9_init(d3d9_info &info)
 			D3DCREATE_HARDWARE_VERTEXPROCESSING |
 			D3DCREATE_NOWINDOWCHANGES, &pp, nullptr, &info.device);
 	if (FAILED(hr)) {
+		Log("IDirect3D9Ex::CreateDeviceEx failed: %#x", hr);
 		return false;
 	}
 
@@ -72,6 +74,7 @@ static inline bool d3d9_init(d3d9_info &info)
 
 	hr = info.device->GetSwapChain(0, &info.swap);
 	if (FAILED(hr)) {
+		Log("IDirect3DDevice9Ex::GetSwapChain failed: %#x", hr);
 		return false;
 	}
 

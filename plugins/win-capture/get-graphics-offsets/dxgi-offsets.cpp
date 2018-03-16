@@ -74,6 +74,7 @@ static inline bool dxgi_init(dxgi_info &info)
 
 	hr = create_factory(&factory_iid, (void**)&factory);
 	if (FAILED(hr)) {
+		Log("CreateDXGIFactory1 failed: %#x", hr);
 		return false;
 	}
 
@@ -82,6 +83,7 @@ static inline bool dxgi_init(dxgi_info &info)
 	hr = factory->EnumAdapters1(0, &adapter);
 	factory->Release();
 	if (FAILED(hr)) {
+		Log("IDXGIFactory1::EnumAdapters1 failed: %#x", hr);
 		return false;
 	}
 
@@ -101,6 +103,7 @@ static inline bool dxgi_init(dxgi_info &info)
 			D3D10_SDK_VERSION, &desc, &info.swap, &device);
 	adapter->Release();
 	if (FAILED(hr)) {
+		Log("D3D10CreateDeviceAndSwapChain failed: %#x", hr);
 		return false;
 	}
 

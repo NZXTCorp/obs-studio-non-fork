@@ -61,6 +61,7 @@ static inline bool d3d8_init(d3d8_info &info)
 			info.hwnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &pp,
 			&info.device);
 	if (FAILED(hr)) {
+		Log("IDirect3D8::CreateDevice failed: %#x", hr);
 		return false;
 	}
 
